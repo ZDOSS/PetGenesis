@@ -7,7 +7,7 @@ description: Create, repair, validate, visually QA, and package Codex-compatible
 
 ## Overview
 
-Create a Codex-compatible animated pet from a concept, brand cue, company/prospect name, one or more reference images, or any combination of those inputs. This workflow keeps the deterministic hatch-pet pipeline for atlas geometry, validation, visual QA, and packaging, while preserving one-subject pet generation and adding a two-subject duo workflow.
+Create a Codex-compatible animated pet from a concept, brand cue, company/prospect name, one or more reference images, or any combination of those inputs. This workflow keeps the deterministic Hatch Pet pipeline for atlas geometry, validation, visual QA, and packaging, while preserving one-subject pet generation and adding a two-subject duo workflow.
 
 User-facing inputs are minimal. If the user omits a pet name, infer one from the concept, brand, company, or reference filenames; if that is not possible, choose a short friendly name. If the user omits a description, infer one from the concept or references. If the user omits reference images, generate the base pet from text first, then use that base as the canonical reference for every animation row.
 
@@ -65,7 +65,7 @@ Discovery worker responsibilities:
 Use this discovery worker prompt:
 
 ```text
-Research a brand for hatch-pet mascot creation.
+Research a brand for PetGenesis mascot creation.
 
 Brand/product/prospect: <brand name>
 User context: <short user request>
@@ -170,7 +170,7 @@ What each step means:
 
 - `Getting <Pet> ready.` Choose or confirm the pet name, description, source images, style preset, style notes, and working folder. For bare brand/product/company requests, first run the brand discovery worker and capture the compact brand brief, source URLs, and avatar seed.
 - `Imagining <Pet>'s main look.` Generate the pet's main reference image. This becomes the visual source of truth.
-- `Picturing <Pet>'s poses.` Generate pose rows through lightweight workers, starting with `idle` and `running-right` to confirm identity and gait. Only mirror `running-left` if `running-right` clearly works when flipped.
+- `Picturing <Pet>'s poses.` Generate pose rows through lightweight workers, starting with `idle` and `running-right` to confirm identity and gait. Only mirror singleton `running-left` if `running-right` clearly works when flipped. Never mirror duo `running-left`.
 - `Hatching <Pet>.` Turn the approved poses into final pet files, review the contact sheet, previews, and validation results, fix any broken parts, save `pet.json` and `spritesheet.webp`, then report the output paths.
 
 Only mark a step complete when the real file, image, or decision exists. If this is a repair run, start from the first relevant step instead of restarting the whole checklist.
@@ -180,9 +180,10 @@ Only mark a step complete when the real file, image, or decision exists. If this
 1. Prepare a pet run folder and imagegen job manifest:
 
 ```bash
-SKILL_DIR="${CODEX_HOME:-$HOME/.codex}/skills/hatch-pet"
+SKILL_DIR="${CODEX_HOME:-$HOME/.codex}/skills/petgenesis"
 python "$SKILL_DIR/scripts/prepare_pet_run.py" \
   --pet-name "<Name>" \
+  --subject-count 1 \
   --description "<one sentence>" \
   --reference /absolute/path/to/reference.png \
   --output-dir /absolute/path/to/run \
@@ -196,7 +197,7 @@ python "$SKILL_DIR/scripts/prepare_pet_run.py" \
   --force
 ```
 
-All arguments above are optional except any flags needed to express user constraints. For text-only requests, pass the concept through `--pet-notes` and omit `--reference`; `prepare_pet_run.py` will infer a name, description, chroma key, and output directory as needed.
+All arguments above are optional except any flags needed to express user constraints. Use `--subject-count 1` for solo pets and `--subject-count 2` for duo pets. For text-only requests, pass the concept through `--pet-notes` and omit `--reference`; `prepare_pet_run.py` will infer a name, description, chroma key, and output directory as needed.
 For brand-only requests, run the discovery worker first, save the markdown brief, then pass the brief path through `--brand-discovery-file`, `avatar_seed` through `--pet-notes`, `brand_name` through `--brand-name`, `brand_brief` through `--brand-brief`, and each source URL through repeated `--brand-source`.
 
 2. Inspect `imagegen-jobs.json` for the next ready `$imagegen` jobs. A job is ready when its `status` is not `complete` and every id in `depends_on` is already complete. Prefer reading the manifest directly with `jq` or the editor instead of adding helper scripts for status display:
@@ -207,10 +208,11 @@ jq '.jobs[] | {id, kind, status, depends_on, prompt_file, retry_prompt_file, inp
 
 3. Generate visual jobs with lightweight workers by default:
 
-- Generate and copy `base` first, using a lightweight base worker.
+- For singleton runs, generate and copy `base` first, using a lightweight base worker.
+- For duo runs, generate and copy `base-a` and `base-b` first, then generate and copy `composite-staging`.
 - Generate and copy `idle` and `running-right` next as the identity and gait check, using one lightweight worker per row.
-- Inspect `running-right`; mirror `running-left` only when visual identity, prop placement, markings, lighting, and direction semantics remain correct.
-- Generate `running-left` normally with a lightweight worker when mirroring would change meaning or identity.
+- For singleton runs, inspect `running-right`; mirror `running-left` only when visual identity, prop placement, markings, lighting, and direction semantics remain correct.
+- For duo runs, generate `running-left` normally with a lightweight worker. Do not mirror it.
 - Generate the remaining rows with lightweight workers, using every input image listed for each job.
 
 For each ready visual job, invoke `$imagegen` with the prompt file listed in `imagegen-jobs.json`, every listed input image with its role label, and the default built-in `image_gen` path unless `$imagegen` itself routes otherwise. The parent agent must keep its own image handling minimal: do not open every generated base or row in the parent rollout. Workers return only the selected source path and a one-sentence QA note; the parent records the selected source path in the manifest.
@@ -233,7 +235,18 @@ cp "$SOURCE" "$RUN_DIR/$OUTPUT_REL"
 ```
 
 ```bash
-if [ "$JOB_ID" = "base" ]; then mkdir -p "$RUN_DIR/references"; cp "$RUN_DIR/$OUTPUT_REL" "$RUN_DIR/references/canonical-base.png"; fi
+mkdir -p "$RUN_DIR/references"
+case "$JOB_ID" in
+  base)
+    cp "$RUN_DIR/$OUTPUT_REL" "$RUN_DIR/references/canonical-base.png"
+    ;;
+  base-a)
+    cp "$RUN_DIR/$OUTPUT_REL" "$RUN_DIR/references/canonical-base-a.png"
+    ;;
+  base-b)
+    cp "$RUN_DIR/$OUTPUT_REL" "$RUN_DIR/references/canonical-base-b.png"
+    ;;
+esac
 ```
 
 ```bash
@@ -255,7 +268,7 @@ case "$SOURCE" in
 esac
 ```
 
-5. Derive `running-left` only when it is visually safe:
+5. For singleton runs only, derive `running-left` only when it is visually safe:
 
 ```bash
 python "$SKILL_DIR/scripts/derive_running_left_from_running_right.py" \
@@ -265,6 +278,8 @@ python "$SKILL_DIR/scripts/derive_running_left_from_running_right.py" \
 ```
 
 That script mirrors each generated frame slot in place so the leftward row preserves the rightward row's temporal order. Do not replace it with a whole-strip mirror that reverses animation timing.
+
+For duo runs, skip this derivation step. Generate `running-left` as a normal `$imagegen` row so Subject A stays left and Subject B stays right.
 
 6. When all jobs are complete, run the image-processing scripts directly:
 
@@ -278,6 +293,7 @@ python "$SKILL_DIR/scripts/extract_strip_frames.py" \
   --decoded-dir "$RUN_DIR/decoded" \
   --output-dir "$RUN_DIR/frames" \
   --states all \
+  --subject-count <1-or-2> \
   --method auto
 ```
 
@@ -331,7 +347,7 @@ python "$SKILL_DIR/scripts/inspect_frames.py" \
   --allow-stable-slots
 ```
 
-Use `stable-slots` as a deliberate QA-driven correction, not the default. It should reduce extraction-induced motion pops without hiding clipped wide poses or bad source strips.
+For singleton runs, use `stable-slots` as a deliberate QA-driven correction, not the default. For duo runs, `--method auto` resolves to `stable-slots` because touching subjects can fuse into one connected component. Stable slots should reduce extraction-induced motion pops without hiding clipped wide poses or bad source strips.
 
 Expected output before cleanup:
 
@@ -397,8 +413,8 @@ Parent responsibilities:
 - prepare the run and inspect `imagegen-jobs.json`
 - assign the base job, row jobs, and final contact-sheet QA to lightweight workers
 - copy selected worker outputs into their decoded paths and mark jobs complete in `imagegen-jobs.json`
-- create `references/canonical-base.png` from the selected base output
-- run the approved `running-left` mirror derivation when appropriate
+- create `references/canonical-base.png` from the selected singleton base output, or `references/canonical-base-a.png` and `references/canonical-base-b.png` from selected duo base outputs
+- run the approved singleton `running-left` mirror derivation when appropriate; never mirror duo `running-left`
 - run deterministic image processing, packaging, repair regeneration, and cleanup
 
 Base worker responsibilities:
@@ -435,7 +451,7 @@ Model choice for workers:
 Use this base worker prompt:
 
 ```text
-Generate the hatch-pet base image.
+Generate the PetGenesis base image.
 
 Run dir: <absolute run dir>
 Job id: base
@@ -456,7 +472,7 @@ qa_note=<one sentence>
 Use this row worker prompt:
 
 ```text
-Generate one hatch-pet row.
+Generate one PetGenesis row.
 
 Run dir: <absolute run dir>
 Row id: <row-id>
@@ -481,7 +497,7 @@ qa_note=<one sentence>
 Use this final visual QA worker prompt:
 
 ```text
-Visually QA one finalized hatch-pet contact sheet.
+Visually QA one finalized PetGenesis contact sheet.
 
 Run dir: <absolute run dir>
 Contact sheet: <absolute run dir>/qa/contact-sheet.png
@@ -519,10 +535,11 @@ For extraction-induced motion popping, do not regenerate imagery first. If the s
 - Keep reference images attached/visible for `$imagegen` whenever the chosen path supports references.
 - Attach the row's `references/layout-guides/<state>.png` image to every row-strip job as a layout-only guide, and do not accept outputs that copy guide pixels.
 - Use lightweight visual workers for base generation, row-strip visual generation, and final contact-sheet QA by default; the parent owns manifest updates, deterministic image scripts, packaging, and cleanup.
-- Generate every normal visual job with `$imagegen`: base plus all row strips that are not explicitly approved `running-left` mirror derivations.
+- Generate every normal visual job with `$imagegen`: singleton base or duo bases, duo composite staging, and all row strips that are not explicitly approved singleton `running-left` mirror derivations.
 - Treat only the base job as eligible for prompt-only generation; every row job must attach its listed grounding images.
-- Generate `running-right` before deciding whether `running-left` can be mirrored.
-- When `running-left` is mirrored, preserve frame order and timing semantics; derive it through the deterministic script instead of mirroring an entire strip wholesale.
+- Generate `running-right` before deciding whether singleton `running-left` can be mirrored.
+- When singleton `running-left` is mirrored, preserve frame order and timing semantics; derive it through the deterministic script instead of mirroring an entire strip wholesale.
+- Never mirror duo `running-left`; generate it through `$imagegen`.
 - Do not derive or reuse `waiting`, `running`, `failed`, `review`, `jumping`, or `waving` from another state; each has distinct app semantics and must be generated as its own row.
 - Never substitute locally drawn, tiled, transformed, or code-generated row strips for missing `$imagegen` outputs.
 - Only mark a visual job complete after its selected output has been copied into the decoded output path.
