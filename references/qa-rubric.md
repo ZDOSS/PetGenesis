@@ -19,6 +19,15 @@ Do not accept an atlas until all checks pass.
 - Same style, material, palette, lighting, and prop design.
 - No frame introduces a new unintended character or object.
 
+## Duo QA
+
+- Both subjects appear in every used cell of every row.
+- Subject A remains left and Subject B remains right unless the user explicitly approved another composition.
+- Each subject preserves its own silhouette, face, palette, material, markings, and props.
+- Subjects may touch, but they must not fuse into one unreadable silhouette.
+- Duo `running-left` must be generated, not mirrored from `running-right`.
+- `qa/review.json` should include `expected_subjects` for duo runs; treat it as a pre-filter and still perform contact-sheet and GIF visual QA.
+
 ## Pet-Safe Style
 
 - Art reads as a Codex app pet, not a scene, app icon, logo sheet, or standalone illustration.

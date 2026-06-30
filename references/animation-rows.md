@@ -27,3 +27,17 @@ Unused cells after each row's final used column must be fully transparent.
 - `waiting`: blocked-on-user-input state; expectant asking pose for approval, help, or user input.
 - `running`: active task work state; focused processing, thinking, scanning, typing, or effortful concentration. This row is not foot-running; avoid jogging, sprinting, treadmill motion, raised knees, long steps, pumping arms, or directional travel.
 - `review`: focused/inspecting/thinking loop suitable for review state.
+
+## Duo Interaction Defaults
+
+For `subject_count = 2`, both subjects appear in every used cell. Preserve Subject A on the left and Subject B on the right unless the user explicitly approved another composition.
+
+- `idle`: both idle with subtle breathing or blinking.
+- `running-right`: both travel right while preserving A-left/B-right staging.
+- `running-left`: both travel left while preserving A-left/B-right staging; generate this row instead of mirroring.
+- `waving`: both wave, or Subject A waves while Subject B reacts when visually clearer.
+- `jumping`: both jump with slight stagger, or one jumps while the other reacts when visually clearer.
+- `failed`: both deflated, or one deflated while the other comforts when visually clearer.
+- `waiting`: both expectant.
+- `running`: both focused on active task work, not foot-running.
+- `review`: both inspecting or thinking.

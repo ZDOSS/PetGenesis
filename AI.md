@@ -19,3 +19,7 @@ Singleton layout guides match Hatch Pet. Duo layout guides divide each cell into
 ## Inspection
 
 Duo inspection is an approximate pre-filter. It checks left and right region occupancy for each frame and writes `expected_subjects`; visual QA remains required for subtle identity drift.
+
+## Skill Instructions
+
+Do not remove singleton behavior while improving duo behavior. Any prompt, job, extraction, or QA change must state whether it applies to singleton, duo, or both.

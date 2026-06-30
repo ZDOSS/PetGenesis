@@ -1,4 +1,4 @@
 interface:
-  display_name: "Hatch Pet"
-  short_description: "Hatch style-flexible Codex pets"
-  default_prompt: "Use $hatch-pet to create a Codex-compatible animated pet in any pet-safe style from a concept, company brand, or reference image."
+  display_name: "PetGenesis"
+  short_description: "Create solo or duo Codex pets with deterministic atlas packaging."
+  default_prompt: "Create a Codex pet from my source material. Ask whether it should be one subject or a two-subject duo if that is not clear."

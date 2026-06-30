@@ -1,15 +1,24 @@
 ---
-name: hatch-pet
-description: Create, repair, validate, visually QA, and package Codex-compatible animated pets and pet spritesheets from character art, generated images, company or prospect brand cues, or visual references. Use when a user wants a lightweight-worker Codex pet workflow, a non-pixel custom pet style, a prospect or company mascot pet, or a full 8x9 animated pet atlas with transparent unused cells, QA contact sheets, and pet.json packaging. This skill composes the installed $imagegen system skill for visual generation and uses bundled scripts for deterministic spritesheet assembly.
+name: petgenesis
+description: Create, repair, validate, visually QA, and package Codex-compatible animated pets from one subject or a two-subject duo using source material, generated images, brand cues, or visual references. Use when a user wants a solo Codex pet, a paired duo pet, two characters preserved together in every frame, or a full 8x9 animated pet atlas with transparent unused cells, QA contact sheets, motion previews, and pet.json packaging. This skill composes the installed $imagegen system skill for visual generation and uses bundled scripts for deterministic spritesheet assembly.
 ---
 
-# Hatch Pet
+# PetGenesis
 
 ## Overview
 
-Create a Codex-compatible animated pet from a concept, brand cue, company/prospect name, one or more reference images, or any combination of those inputs. This workflow keeps the deterministic hatch-pet pipeline for atlas geometry, validation, visual QA, and packaging, while using concise state-specific prompts and allowing any pet-safe visual style.
+Create a Codex-compatible animated pet from a concept, brand cue, company/prospect name, one or more reference images, or any combination of those inputs. This workflow keeps the deterministic hatch-pet pipeline for atlas geometry, validation, visual QA, and packaging, while preserving one-subject pet generation and adding a two-subject duo workflow.
 
-User-facing inputs are optional. If the user omits a pet name, infer one from the concept, brand, company, or reference filenames; if that is not possible, choose a short friendly name. If the user omits a description, infer one from the concept or references. If the user omits reference images, generate the base pet from text first, then use that base as the canonical reference for every animation row.
+User-facing inputs are minimal. If the user omits a pet name, infer one from the concept, brand, company, or reference filenames; if that is not possible, choose a short friendly name. If the user omits a description, infer one from the concept or references. If the user omits reference images, generate the base pet from text first, then use that base as the canonical reference for every animation row.
+
+## Subject Counts
+
+PetGenesis supports `subject_count` 1 or 2.
+
+- Use `--subject-count 1` for normal solo pets. Preserve the Hatch Pet workflow: one canonical base, then row strips.
+- Use `--subject-count 2` for duo pets. Generate one canonical base per subject, then one composite staging reference, then row strips grounded on both bases and the composition guide.
+- Reject requests for more than two subjects. Explain that the `192x208` cell cannot preserve readable full-body animation for three or more subjects.
+- If the user asks for a solo pet, infer `--subject-count 1`. If the user asks for a duo, pair, couple, or two characters, infer `--subject-count 2`. If the count is unclear and source material could plausibly contain one or two subjects, ask one concise clarification.
 
 ## Generation Delegation
 
@@ -25,7 +34,7 @@ Do not call the Image API, image CLI, or any other image-generation path directl
 
 When invoking `$imagegen`, pass the generated pet prompt as the authoritative visual spec. Pet prompts should stay concise, state-specific, sprite-production oriented, and grounded in the listed input images. Keep longer policy and QA rules in this skill and the deterministic review scripts rather than expanding them into every image prompt. Do not wrap prompts in the generic `$imagegen` shared prompt schema.
 
-Use this skill's scripts for deterministic image work only: preparing layout guides and prompts, mirroring approved `running-left`, extracting frames, validating rows, composing the final atlas, and creating contact-sheet plus motion-preview QA media. Parent-owned shell/`jq` steps handle manifest updates, packaging, and cleanup.
+Use this skill's scripts for deterministic image work only: preparing layout guides and prompts, mirroring approved singleton `running-left`, extracting frames, validating rows, composing the final atlas, and creating contact-sheet plus motion-preview QA media. Parent-owned shell/`jq` steps handle manifest updates, packaging, and cleanup. Duo `running-left` must be generated, not mirrored, so Subject A stays left and Subject B stays right.
 
 ## Storage Controls
 
@@ -92,7 +101,7 @@ brand_sources=<same comma-separated URLs from Generation handoff>
 
 The parent should save the markdown brief before preparing the run, then pass it to `prepare_pet_run.py` as `--brand-discovery-file` together with `--brand-name`, `--brand-brief`, repeated `--brand-source`, and a concise `--pet-notes` value based on `avatar_seed` when the user did not provide a better avatar description. Keep the full brief for review; only the compact handoff fields should shape prompts. If web search is unavailable and the user gave only a bare brand name, ask for brand cues before generating.
 
-For a normal pet run, expect up to 10 visual generation jobs: 1 base pet plus 9 row-strip jobs. The Codex app contract currently uses all 9 states: `idle`, `running-right`, `running-left`, `waving`, `jumping`, `failed`, `waiting`, `running`, and `review`. The only deterministic visual derivation is `running-left`, which may be produced by mirroring `running-right` only after `running-right` has been generated, visually inspected, and explicitly approved as safe to mirror. If mirroring is not appropriate, generate `running-left` as a normal grounded `$imagegen` row.
+For a singleton pet run, expect up to 10 visual generation jobs: 1 base pet plus 9 row-strip jobs. For a duo pet run, expect up to 12 visual generation jobs: 2 base subjects, 1 composite staging reference, and 9 row-strip jobs. The Codex app contract currently uses all 9 states: `idle`, `running-right`, `running-left`, `waving`, `jumping`, `failed`, `waiting`, `running`, and `review`. The only deterministic visual derivation is singleton `running-left`, which may be produced by mirroring `running-right` only after `running-right` has been generated, visually inspected, and explicitly approved as safe to mirror. Duo `running-left` is always generated as a normal grounded `$imagegen` row.
 
 After selecting a visual output, the parent agent copies that exact image into the job's `decoded/` path and marks the job complete in `imagegen-jobs.json`. Do not write helper scripts that populate row outputs. The deterministic Python scripts may only process already-generated visual outputs.
 
