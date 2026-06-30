@@ -46,6 +46,39 @@ def edge_alpha_count(image: Image.Image, margin: int) -> int:
     return total
 
 
+def region_alpha_count(image: Image.Image, box: tuple[int, int, int, int]) -> int:
+    return alpha_nonzero_count(image.crop(box).getchannel("A"))
+
+
+def inspect_expected_subjects(
+    frames: list[Image.Image], min_region_pixels: int
+) -> dict[str, object]:
+    subjects = {
+        "a": {
+            "region": [0, 0, CELL_WIDTH // 2, CELL_HEIGHT],
+            "present_frames": 0,
+            "missing_frames": [],
+        },
+        "b": {
+            "region": [CELL_WIDTH // 2, 0, CELL_WIDTH, CELL_HEIGHT],
+            "present_frames": 0,
+            "missing_frames": [],
+        },
+    }
+    errors: list[str] = []
+    for index, frame in enumerate(frames):
+        for subject_id, info in subjects.items():
+            count = region_alpha_count(frame, tuple(info["region"]))
+            if count >= min_region_pixels:
+                info["present_frames"] += 1
+            else:
+                info["missing_frames"].append(index)
+                errors.append(
+                    f"subject {subject_id} missing or too sparse in frame {index:02d}"
+                )
+    return {"ok": not errors, "subjects": subjects, "errors": errors}
+
+
 def color_distance(left: tuple[int, int, int], right: tuple[int, int, int]) -> float:
     return math.sqrt(sum((left[index] - right[index]) ** 2 for index in range(3)))
 
@@ -119,6 +152,7 @@ def inspect_state(
     row_errors: list[str] = []
     row_warnings: list[str] = []
     frames: list[dict[str, object]] = []
+    loaded_frames: list[Image.Image] = []
     areas: list[int] = []
     manifest_row = manifest_rows.get(state, {})
     method = manifest_row.get("method")
@@ -143,6 +177,7 @@ def inspect_state(
     for index, frame_path in enumerate(files[:expected_count]):
         with Image.open(frame_path) as opened:
             frame = opened.convert("RGBA")
+        loaded_frames.append(frame.copy())
         nontransparent = alpha_nonzero_count(frame)
         bbox = frame.getbbox()
         edge_pixels = edge_alpha_count(frame, args.edge_margin)
@@ -193,7 +228,18 @@ def inspect_state(
                     f"{state} frame {index:02d} is much larger than the row median ({area} vs {row_median:.0f})"
                 )
 
-    return {
+    expected_subjects = None
+    subject_count = int(
+        manifest_row.get("subject_count", getattr(args, "subject_count", 1)) or 1
+    )
+    if subject_count == 2:
+        expected_subjects = inspect_expected_subjects(
+            loaded_frames[:expected_count],
+            getattr(args, "min_subject_region_pixels", 80),
+        )
+        row_errors.extend(expected_subjects["errors"])
+
+    result = {
         "state": state,
         "expected_frames": expected_count,
         "actual_frames": len(files),
@@ -203,6 +249,9 @@ def inspect_state(
         "warnings": row_warnings,
         "frames": frames,
     }
+    if expected_subjects is not None:
+        result["expected_subjects"] = expected_subjects
+    return result
 
 
 def main() -> None:
@@ -216,6 +265,8 @@ def main() -> None:
     parser.add_argument("--chroma-adjacent-pixel-threshold", type=int, default=800)
     parser.add_argument("--small-outlier-ratio", type=float, default=0.35)
     parser.add_argument("--large-outlier-ratio", type=float, default=2.75)
+    parser.add_argument("--min-subject-region-pixels", type=int, default=80)
+    parser.add_argument("--subject-count", type=int, default=1)
     parser.add_argument(
         "--require-components",
         action="store_true",

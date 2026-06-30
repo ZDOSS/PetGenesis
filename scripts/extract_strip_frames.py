@@ -310,6 +310,12 @@ def extract_stable_slot_frames(strip: Image.Image, frame_count: int) -> list[Ima
     return frames
 
 
+def resolve_extraction_method(method: str, subject_count: int) -> str:
+    if method == "auto" and subject_count > 1:
+        return "stable-slots"
+    return method
+
+
 def extract_state(
     strip_path: Path,
     state: str,
@@ -317,6 +323,7 @@ def extract_state(
     chroma_key: tuple[int, int, int],
     threshold: float,
     method: str,
+    subject_count: int = 1,
 ) -> dict[str, object]:
     frame_count = ROW_FRAME_COUNTS[state]
     with Image.open(strip_path) as opened:
@@ -347,7 +354,12 @@ def extract_state(
         output = state_dir / f"{index:02d}.png"
         frame.save(output)
         outputs.append(str(output))
-    return {"state": state, "frames": outputs, "method": used_method}
+    return {
+        "state": state,
+        "frames": outputs,
+        "method": used_method,
+        "subject_count": subject_count,
+    }
 
 
 def main() -> None:
@@ -363,12 +375,14 @@ def main() -> None:
         default="auto",
         help="Use connected sprite components when possible, raw equal slots, or row-stable slot viewports.",
     )
+    parser.add_argument("--subject-count", type=int, default=1)
     args = parser.parse_args()
 
     decoded_dir = Path(args.decoded_dir).expanduser().resolve()
     output_dir = Path(args.output_dir).expanduser().resolve()
     chroma_key = load_chroma_key(decoded_dir, args.chroma_key)
     states = parse_states(args.states)
+    method = resolve_extraction_method(args.method, args.subject_count)
     manifest = []
     for state in states:
         strip_path = decoded_dir / f"{state}.png"
@@ -381,7 +395,8 @@ def main() -> None:
                 output_dir,
                 chroma_key,
                 args.key_threshold,
-                args.method,
+                method,
+                args.subject_count,
             )
         )
 
@@ -389,6 +404,7 @@ def main() -> None:
         json.dumps(
             {
                 "ok": True,
+                "subject_count": args.subject_count,
                 "chroma_key": {
                     "hex": f"#{chroma_key[0]:02X}{chroma_key[1]:02X}{chroma_key[2]:02X}",
                     "rgb": list(chroma_key),
