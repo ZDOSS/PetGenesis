@@ -367,16 +367,15 @@ python -m pytest tests -q
 
 Expected: failures mention missing `normalize_subjects`, `resolve_extraction_method`, and `expected_subjects`.
 
-- [ ] **Step 5: Commit the failing tests**
+- [ ] **Step 5: Keep the red tests uncommitted until the first green implementation**
 
 Run:
 
 ```powershell
-git -C C:\Github\PetGenesis add tests
-git -C C:\Github\PetGenesis commit -m "test: cover subject count workflows"
+git -C C:\Github\PetGenesis status --short
 ```
 
-Expected: commit succeeds with failing tests intentionally captured before implementation.
+Expected: the three new test files are untracked. They will be committed with the implementation that makes the first group pass, so the repository does not intentionally capture a red checkpoint.
 
 ---
 
