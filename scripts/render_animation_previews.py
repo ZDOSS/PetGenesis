@@ -23,6 +23,18 @@ ROW_DURATIONS = {
 IMAGE_SUFFIXES = {".png", ".webp", ".jpg", ".jpeg"}
 
 
+def parse_states(raw: str) -> list[str]:
+    if raw == "all":
+        return list(ROW_DURATIONS)
+    states = [item.strip() for item in raw.split(",") if item.strip()]
+    unknown = sorted(set(states) - set(ROW_DURATIONS))
+    if unknown:
+        raise SystemExit(f"unknown state(s): {', '.join(unknown)}")
+    if not states:
+        raise SystemExit("--states must include at least one state")
+    return states
+
+
 def frame_files(state_dir: Path) -> list[Path]:
     if not state_dir.is_dir():
         return []
@@ -59,12 +71,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--frames-root", required=True)
     parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--states", default="all")
     args = parser.parse_args()
 
     frames_root = Path(args.frames_root).expanduser().resolve()
     output_dir = Path(args.output_dir).expanduser().resolve()
+    selected_states = parse_states(args.states)
     previews = []
     for state, durations in ROW_DURATIONS.items():
+        if state not in selected_states:
+            continue
         frames = load_frames(frames_root, state, len(durations))
         output = output_dir / f"{state}.gif"
         save_preview(frames, durations, output)

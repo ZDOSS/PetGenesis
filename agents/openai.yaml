@@ -1,4 +1,4 @@
 interface:
   display_name: "PetGenesis"
-  short_description: "Create solo or duo Codex pets with deterministic atlas packaging."
-  default_prompt: "Create a Codex pet from my source material. Ask whether it should be one subject or a two-subject duo if that is not clear."
+  short_description: "Create solo or duo Codex pets with approval-gated previews and deterministic atlas packaging."
+  default_prompt: "Create a Codex pet from my source material. Ask whether it should be one subject or a two-subject duo if unclear, ask where the final pet should be saved, and show each base/composite/row for approval before continuing."

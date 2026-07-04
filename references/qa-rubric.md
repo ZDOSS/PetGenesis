@@ -25,7 +25,7 @@ Do not accept an atlas until all checks pass.
 - Subject A remains left and Subject B remains right unless the user explicitly approved another composition.
 - Each subject preserves its own silhouette, face, palette, material, markings, and props.
 - Subjects may touch, but they must not fuse into one unreadable silhouette.
-- Duo `running-left` must be generated, not mirrored from `running-right`.
+- In `generated` mode, duo `running-left` must be generated, not mirrored from `running-right`.
 - `qa/review.json` should include `expected_subjects` for duo runs; treat it as a pre-filter and still perform contact-sheet and GIF visual QA.
 
 ## Pet-Safe Style
@@ -45,6 +45,7 @@ Do not accept an atlas until all checks pass.
 - State-specific actions are recognizable at pet size.
 - Poses are generated animation variants, not repeated copies of the same source image.
 - Preview GIFs do not show unintended size popping, extraction-induced baseline jumps, or wrong directional facing.
+- In explicit `micro` or `hybrid` mode, derived rows may have simpler motion, but every state still needs a readable semantic difference at pet size.
 
 ## App Fitness
 
@@ -73,3 +74,12 @@ Repair the smallest failing scope first:
 3. Full atlas regeneration only when identity or layout is broadly broken.
 
 The normal production path should regenerate only the affected row and copy the selected replacement into the same decoded output path unless the base character is wrong.
+
+## Package Readiness
+
+- `final/validation.json` reports `ok: true`.
+- `qa/review.json` reports `ok: true`.
+- `qa/contact-sheet.png` exists and has been visually checked.
+- Every expected `qa/previews/*.gif` file exists and has been visually checked.
+- `imagegen-jobs.json` has no pending, rejected, or repair-needed jobs unless a cleaned run is explicitly being packaged with `--allow-cleaned-run`.
+- The finished package passes `scripts/verify_pet_package.py`; use `--strict-clean` for catalog submissions.

@@ -34,6 +34,13 @@ def find_job(manifest: dict[str, object], job_id: str) -> dict[str, object]:
     raise SystemExit(f"unknown job id: {job_id}")
 
 
+def is_approved(job: dict[str, object]) -> bool:
+    approval = job.get("approval")
+    if isinstance(approval, dict) and approval.get("status") == "approved":
+        return True
+    return job.get("status") in {"approved", "derived", "complete"}
+
+
 def image_metadata(path: Path) -> dict[str, object]:
     with Image.open(path) as image:
         image.verify()
@@ -94,8 +101,8 @@ def main() -> None:
     right_job = find_job(manifest, "running-right")
     left_job = find_job(manifest, "running-left")
 
-    if right_job.get("status") != "complete":
-        raise SystemExit("running-right must be complete before deriving running-left")
+    if not is_approved(right_job):
+        raise SystemExit("running-right must be approved before deriving running-left")
     mirror_policy = left_job.get("mirror_policy")
     if not isinstance(mirror_policy, dict) or mirror_policy.get("may_derive_from") != "running-right":
         raise SystemExit("running-left is not configured for conditional mirroring")
@@ -112,11 +119,18 @@ def main() -> None:
         mirrored = mirror_strip_preserving_frame_order(image)
         mirrored.save(output)
 
-    left_job["status"] = "complete"
+    left_job["status"] = "derived"
     left_job["source_path"] = manifest_relative(source, run_dir)
+    left_job["selected_source"] = manifest_relative(source, run_dir)
     left_job["derived_from"] = "running-right"
     left_job["completed_at"] = datetime.now(timezone.utc).isoformat()
     left_job["metadata"] = image_metadata(output)
+    left_job["approval"] = {
+        "required": True,
+        "status": "approved",
+        "approved_at": left_job["completed_at"],
+        "note": args.decision_note.strip(),
+    }
     left_job["mirror_decision"] = {
         "approved": True,
         "approved_at": left_job["completed_at"],

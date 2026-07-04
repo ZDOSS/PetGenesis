@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+from collections import Counter
 from pathlib import Path
 from statistics import median
 
@@ -25,6 +26,18 @@ ROW_FRAME_COUNTS = {
     "review": 6,
 }
 IMAGE_SUFFIXES = {".png", ".webp", ".jpg", ".jpeg"}
+
+
+def parse_states(raw: str) -> list[str]:
+    if raw == "all":
+        return list(ROW_FRAME_COUNTS)
+    states = [item.strip() for item in raw.split(",") if item.strip()]
+    unknown = sorted(set(states) - set(ROW_FRAME_COUNTS))
+    if unknown:
+        raise SystemExit(f"unknown state(s): {', '.join(unknown)}")
+    if not states:
+        raise SystemExit("--states must include at least one state")
+    return states
 
 
 def alpha_nonzero_count(image: Image.Image) -> int:
@@ -79,6 +92,13 @@ def inspect_expected_subjects(
     return {"ok": not errors, "subjects": subjects, "errors": errors}
 
 
+def quantized_rgb(red: int, green: int, blue: int, step: int = 32) -> tuple[int, int, int]:
+    return tuple(
+        min(255, (value // step) * step + step // 2)
+        for value in (red, green, blue)
+    )
+
+
 def color_distance(left: tuple[int, int, int], right: tuple[int, int, int]) -> float:
     return math.sqrt(sum((left[index] - right[index]) ** 2 for index in range(3)))
 
@@ -98,6 +118,137 @@ def chroma_adjacent_count(
         if alpha > 16 and color_distance((red, green, blue), chroma_key) <= threshold:
             count += 1
     return count
+
+
+def dominant_palette(
+    image: Image.Image,
+    chroma_key: tuple[int, int, int] | None,
+    *,
+    max_colors: int = 5,
+    chroma_threshold: float = 96.0,
+) -> list[tuple[int, int, int]]:
+    rgba = image.convert("RGBA")
+    counter: Counter[tuple[int, int, int]] = Counter()
+    data = rgba.tobytes()
+    for index in range(0, len(data), 4):
+        red, green, blue, alpha = data[index : index + 4]
+        if alpha <= 16:
+            continue
+        if chroma_key is not None and color_distance((red, green, blue), chroma_key) <= chroma_threshold:
+            continue
+        counter[quantized_rgb(red, green, blue)] += 1
+    return [color for color, _count in counter.most_common(max_colors)]
+
+
+def palette_region_distance(
+    image: Image.Image,
+    box: tuple[int, int, int, int],
+    palette: list[tuple[int, int, int]],
+) -> float | None:
+    if not palette:
+        return None
+    rgba = image.crop(box).convert("RGBA")
+    data = rgba.tobytes()
+    total = 0.0
+    count = 0
+    for index in range(0, len(data), 4):
+        red, green, blue, alpha = data[index : index + 4]
+        if alpha <= 16:
+            continue
+        color = quantized_rgb(red, green, blue)
+        total += min(color_distance(color, reference) for reference in palette)
+        count += 1
+    if count == 0:
+        return None
+    return total / count
+
+
+def load_subject_canonical_paths(frames_root: Path) -> dict[str, Path]:
+    run_dir = frames_root.parent
+    ledger = {}
+    ledger_path = run_dir / "references" / "identity-ledger.json"
+    if ledger_path.is_file():
+        ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+    request = load_optional_json(run_dir / "pet_request.json")
+    subjects = ledger.get("subjects") if isinstance(ledger, dict) else None
+    if not isinstance(subjects, list):
+        subjects = request.get("subjects") if isinstance(request, dict) else None
+    paths: dict[str, Path] = {}
+    if not isinstance(subjects, list):
+        return paths
+    for subject in subjects:
+        if not isinstance(subject, dict):
+            continue
+        subject_id = str(subject.get("id") or "").lower()
+        canonical = subject.get("canonical_base") or subject.get("canonical_base_path")
+        if subject_id in {"a", "b"} and isinstance(canonical, str) and canonical:
+            paths[subject_id] = run_dir / canonical
+    return paths
+
+
+def load_optional_json(path: Path) -> dict[str, object]:
+    if not path.is_file():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_duo_reference_palettes(
+    frames_root: Path,
+    chroma_key: tuple[int, int, int] | None,
+) -> dict[str, list[tuple[int, int, int]]]:
+    palettes: dict[str, list[tuple[int, int, int]]] = {}
+    for subject_id, path in load_subject_canonical_paths(frames_root).items():
+        if not path.is_file():
+            continue
+        with Image.open(path) as opened:
+            palette = dominant_palette(opened, chroma_key)
+        if palette:
+            palettes[subject_id] = palette
+    return palettes
+
+
+def inspect_duo_palette_regions(
+    frames: list[Image.Image],
+    frames_root: Path,
+    chroma_key: tuple[int, int, int] | None,
+    args: argparse.Namespace,
+) -> dict[str, object] | None:
+    if getattr(args, "disable_duo_palette_check", False):
+        return None
+    palettes = load_duo_reference_palettes(frames_root, chroma_key)
+    if "a" not in palettes or "b" not in palettes:
+        return None
+
+    left_box = (0, 0, CELL_WIDTH // 2, CELL_HEIGHT)
+    right_box = (CELL_WIDTH // 2, 0, CELL_WIDTH, CELL_HEIGHT)
+    delta = getattr(args, "duo_palette_warning_delta", 18.0)
+    warnings: list[str] = []
+    frames_info: list[dict[str, object]] = []
+    for index, frame in enumerate(frames):
+        left_to_a = palette_region_distance(frame, left_box, palettes["a"])
+        left_to_b = palette_region_distance(frame, left_box, palettes["b"])
+        right_to_a = palette_region_distance(frame, right_box, palettes["a"])
+        right_to_b = palette_region_distance(frame, right_box, palettes["b"])
+        info = {
+            "index": index,
+            "left_to_a": left_to_a,
+            "left_to_b": left_to_b,
+            "right_to_a": right_to_a,
+            "right_to_b": right_to_b,
+        }
+        frames_info.append(info)
+        if None in {left_to_a, left_to_b, right_to_a, right_to_b}:
+            continue
+        if left_to_b + delta < left_to_a and right_to_a + delta < right_to_b:
+            warnings.append(
+                f"frame {index:02d} palette regions look swapped: left is closer to Subject B and right is closer to Subject A"
+            )
+    return {
+        "ok": not warnings,
+        "warnings": warnings,
+        "palettes": {subject_id: [list(color) for color in palette] for subject_id, palette in palettes.items()},
+        "frames": frames_info,
+    }
 
 
 def frame_files(state_dir: Path) -> list[Path]:
@@ -229,6 +380,7 @@ def inspect_state(
                 )
 
     expected_subjects = None
+    palette_regions = None
     subject_count = int(
         manifest_row.get("subject_count", getattr(args, "subject_count", 1)) or 1
     )
@@ -238,6 +390,17 @@ def inspect_state(
             getattr(args, "min_subject_region_pixels", 80),
         )
         row_errors.extend(expected_subjects["errors"])
+        palette_regions = inspect_duo_palette_regions(
+            loaded_frames[:expected_count],
+            frames_root,
+            chroma_key,
+            args,
+        )
+        if palette_regions is not None:
+            row_warnings.extend(
+                f"{state} {warning}"
+                for warning in palette_regions["warnings"]
+            )
 
     result = {
         "state": state,
@@ -251,6 +414,8 @@ def inspect_state(
     }
     if expected_subjects is not None:
         result["expected_subjects"] = expected_subjects
+    if palette_regions is not None:
+        result["duo_palette_regions"] = palette_regions
     return result
 
 
@@ -258,6 +423,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--frames-root", required=True)
     parser.add_argument("--json-out", required=True)
+    parser.add_argument("--states", default="all")
     parser.add_argument("--min-used-pixels", type=int, default=400)
     parser.add_argument("--edge-margin", type=int, default=2)
     parser.add_argument("--edge-pixel-threshold", type=int, default=24)
@@ -266,6 +432,8 @@ def main() -> None:
     parser.add_argument("--small-outlier-ratio", type=float, default=0.35)
     parser.add_argument("--large-outlier-ratio", type=float, default=2.75)
     parser.add_argument("--min-subject-region-pixels", type=int, default=80)
+    parser.add_argument("--duo-palette-warning-delta", type=float, default=18.0)
+    parser.add_argument("--disable-duo-palette-check", action="store_true")
     parser.add_argument("--subject-count", type=int, default=1)
     parser.add_argument(
         "--require-components",
@@ -282,9 +450,11 @@ def main() -> None:
     frames_root = Path(args.frames_root).expanduser().resolve()
     manifest_rows = load_manifest(frames_root)
     chroma_key = load_chroma_key(frames_root)
+    selected_states = parse_states(args.states)
     rows = [
         inspect_state(frames_root, state, count, manifest_rows, chroma_key, args)
         for state, count in ROW_FRAME_COUNTS.items()
+        if state in selected_states
     ]
     errors = [error for row in rows for error in row["errors"]]
     warnings = [warning for row in rows for warning in row["warnings"]]

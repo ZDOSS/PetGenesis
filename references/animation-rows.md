@@ -41,3 +41,13 @@ For `subject_count = 2`, both subjects appear in every used cell. Preserve Subje
 - `waiting`: both expectant.
 - `running`: both focused on active task work, not foot-running.
 - `review`: both inspecting or thinking.
+
+## Derivation Modes
+
+The atlas geometry and row semantics are the same in every animation mode.
+
+- `generated` mode should generate every semantic row, except an explicitly approved singleton `running-left` mirror.
+- `micro` mode derives all rows from the canonical base or duo composition guide. It is budget-saving and lower variety.
+- `hybrid` mode generates key rows (`idle`, `running-right`, `failed`) and derives the remaining rows.
+
+Derived rows still need readable state intent, stable placement, transparent unused cells, and complete preview GIF review.

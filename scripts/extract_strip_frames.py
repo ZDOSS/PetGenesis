@@ -70,11 +70,46 @@ def remove_chroma_background(
 ) -> Image.Image:
     rgba = image.convert("RGBA")
     pixels = rgba.load()
-    for y in range(rgba.height):
-        for x in range(rgba.width):
-            red, green, blue, alpha = pixels[x, y]
-            if color_distance(red, green, blue, chroma_key) <= threshold:
-                pixels[x, y] = (0, 0, 0, 0)
+    width, height = rgba.size
+    visited = bytearray(width * height)
+
+    def pixel_index(x: int, y: int) -> int:
+        return y * width + x
+
+    def is_background_key(x: int, y: int) -> bool:
+        red, green, blue, alpha = pixels[x, y]
+        return alpha > 16 and color_distance(red, green, blue, chroma_key) <= threshold
+
+    stack: list[tuple[int, int]] = []
+    for x in range(width):
+        for y in (0, height - 1):
+            index = pixel_index(x, y)
+            if not visited[index] and is_background_key(x, y):
+                visited[index] = 1
+                stack.append((x, y))
+    for y in range(height):
+        for x in (0, width - 1):
+            index = pixel_index(x, y)
+            if not visited[index] and is_background_key(x, y):
+                visited[index] = 1
+                stack.append((x, y))
+
+    while stack:
+        x, y = stack.pop()
+        pixels[x, y] = (0, 0, 0, 0)
+        for neighbor_x, neighbor_y in (
+            (x - 1, y),
+            (x + 1, y),
+            (x, y - 1),
+            (x, y + 1),
+        ):
+            if not (0 <= neighbor_x < width and 0 <= neighbor_y < height):
+                continue
+            index = pixel_index(neighbor_x, neighbor_y)
+            if visited[index] or not is_background_key(neighbor_x, neighbor_y):
+                continue
+            visited[index] = 1
+            stack.append((neighbor_x, neighbor_y))
     return rgba
 
 

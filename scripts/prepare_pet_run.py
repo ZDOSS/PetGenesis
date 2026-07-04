@@ -164,6 +164,9 @@ BRAND_DISCOVERY_PATH = "references/brand-discovery.md"
 LAYOUT_GUIDE_DIR = "references/layout-guides"
 LAYOUT_GUIDE_SAFE_MARGIN_X = 18
 LAYOUT_GUIDE_SAFE_MARGIN_Y = 16
+IDENTITY_LEDGER_PATH = "references/identity-ledger.json"
+ANIMATION_MODES = {"generated", "micro", "hybrid"}
+HYBRID_GENERATED_STATES = {"idle", "running-right", "failed"}
 
 
 def slugify(value: str) -> str:
@@ -267,11 +270,11 @@ def infer_pet_notes(args: argparse.Namespace, reference_paths: list[Path]) -> st
 
 def default_output_dir(pet_id: str) -> Path:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return Path.cwd() / "output" / "hatch-pet" / f"{pet_id}-{timestamp}"
+    return Path.cwd() / "petgenesis-pets" / f"{pet_id}-{timestamp}"
 
 
 def rel(path: Path, root: Path) -> str:
-    return str(path.resolve().relative_to(root.resolve()))
+    return path.resolve().relative_to(root.resolve()).as_posix()
 
 
 def image_metadata(path: Path) -> dict[str, object]:
@@ -283,6 +286,52 @@ def image_metadata(path: Path) -> dict[str, object]:
             "mode": image.mode,
             "format": image.format,
         }
+
+
+def parse_subject_reference(value: str) -> tuple[str, Path]:
+    raw_value = value.strip()
+    if len(raw_value) < 3 or raw_value[0].lower() not in SUBJECT_IDS or raw_value[1] not in {":", "="}:
+        raise SystemExit(
+            "subject reference must start with a: or b: "
+            "(for example: a:/absolute/path/to/reference.png)"
+        )
+    path_text = raw_value[2:].strip()
+    if not path_text:
+        raise SystemExit("subject reference path must not be empty")
+    return raw_value[0].lower(), Path(path_text).expanduser().resolve()
+
+
+def reference_input(path: Path, run_dir: Path, role: str) -> dict[str, str]:
+    return {"path": rel(path, run_dir), "role": role}
+
+
+def reference_inputs_for_subject(
+    run_dir: Path,
+    copied_refs: list[dict[str, object]],
+    subject_id: str,
+    *,
+    include_shared: bool = True,
+) -> list[dict[str, str]]:
+    subject_id = subject_id.lower()
+    subject_refs: list[dict[str, str]] = []
+    shared_refs: list[dict[str, str]] = []
+    for ref in copied_refs:
+        scope = str(ref.get("scope", "shared") or "shared")
+        ref_subject = str(ref.get("subject", "") or "").lower()
+        copied_path = Path(str(ref["copied_path"]))
+        if scope == "subject":
+            if ref_subject == subject_id:
+                subject_refs.append(
+                    reference_input(
+                        copied_path,
+                        run_dir,
+                        f"Subject {subject_id.upper()} pet reference",
+                    )
+                )
+            continue
+        if include_shared:
+            shared_refs.append(reference_input(copied_path, run_dir, "shared pet reference"))
+    return [*subject_refs, *shared_refs]
 
 
 def draw_dashed_line(
@@ -568,6 +617,49 @@ def subject_identity_lines(subjects: list[dict[str, str]]) -> str:
     )
 
 
+def canvas_target_line(frames: int) -> str:
+    width = frames * ATLAS["cell_width"]
+    return (
+        f"Canvas target: {width}x{ATLAS['cell_height']} pixels for {frames} frames, "
+        f"with {frames} invisible {ATLAS['cell_width']}x{ATLAS['cell_height']} slots."
+    )
+
+
+def make_identity_ledger(args: argparse.Namespace) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "subject_count": args.subject_count,
+        "style_contract": {
+            "preset": args.style_preset,
+            "notes": args.style_notes,
+            "contract": args.style_contract,
+        },
+        "subjects": [
+            {
+                "id": subject["id"],
+                "name": subject["name"],
+                "canonical_base": subject["canonical_base_path"],
+                "identity_notes": subject["notes"],
+                "critical_details": [],
+                "side_dependent_details": [],
+                "simplification_rules": [
+                    "Keep details pet-scale readable; simplify or omit fragile tiny details instead of duplicating or misplacing them."
+                ],
+            }
+            for subject in args.subjects
+        ],
+        "forbidden": [
+            "text",
+            "readable logos",
+            "floating effects",
+            "shadows",
+            "speed lines",
+            "guide marks",
+            "chroma-key colors inside subjects",
+        ],
+    }
+
+
 def duo_interaction_line(args: argparse.Namespace, state: str) -> str:
     if args.interaction_mode == "one-acts-other-reacts" and state in {
         "waving",
@@ -612,9 +704,12 @@ def row_prompt(
         state_requirements = "\n".join(f"- {line}" for line in STATE_REQUIREMENTS[state])
         identities = subject_identity_lines(subjects)
         interaction = duo_interaction_line(args, state)
+        canvas_target = canvas_target_line(frames)
         return f"""Create one horizontal animation strip for Codex pet `{args.pet_id}`, state `{state}`.
 
 Use the attached canonical bases for per-subject identity. Use the attached composition guide for A-left/B-right staging, relative scale, gap, and baseline. Use the attached layout guide only for slot count, spacing, centering, and padding; do not draw the guide.
+
+{canvas_target}
 
 Output exactly {frames} full-body frames in one left-to-right row on flat pure {chroma_name} {chroma_key}. Treat the row as {frames} invisible equal-width slots: both complete subjects inside every slot, evenly spaced, with no overlap across slots, clipping, empty slots, labels, or borders.
 
@@ -639,9 +734,12 @@ Clean extraction: crisp opaque edges, safe padding, no scenery, text, guide mark
     chroma_name = args.chroma_key["name"]
     state_prompt = STATE_PROMPTS[state]
     state_requirements = "\n".join(f"- {line}" for line in STATE_REQUIREMENTS[state])
+    canvas_target = canvas_target_line(frames)
     return f"""Create one horizontal animation strip for Codex pet `{args.pet_id}`, state `{state}`.
 
 Use the attached canonical base for identity. Use the attached layout guide only for slot count, spacing, centering, and padding; do not draw the guide.
+
+{canvas_target}
 
 Output exactly {frames} full-body frames in one left-to-right row on flat pure {chroma_name} {chroma_key}. Treat the row as {frames} invisible equal-width slots: one centered complete pose per slot, evenly spaced, with no overlap, clipping, empty slots, labels, or borders.
 
@@ -668,7 +766,10 @@ def retry_row_prompt(
         state_requirements = "\n".join(f"- {line}" for line in STATE_REQUIREMENTS[state])
         identities = subject_identity_lines(subjects)
         interaction = duo_interaction_line(args, state)
+        canvas_target = canvas_target_line(frames)
         return f"""Create Codex pet duo row `{state}` for `{args.pet_id}`: exactly {frames} full-body frames in one horizontal strip on flat pure {chroma_name} {chroma_key}.
+
+{canvas_target}
 
 Use the attached canonical bases for independent identity and the composition guide for fixed A-left/B-right staging. Use the layout guide only for spacing.
 
@@ -692,7 +793,10 @@ Both complete subjects inside every invisible slot. No text, boxes, guide marks,
     chroma_name = args.chroma_key["name"]
     state_prompt = STATE_PROMPTS[state]
     state_requirements = "\n".join(f"- {line}" for line in STATE_REQUIREMENTS[state])
+    canvas_target = canvas_target_line(frames)
     return f"""Create Codex pet row `{state}` for `{args.pet_id}`: exactly {frames} full-body frames in one horizontal strip on flat pure {chroma_name} {chroma_key}.
+
+{canvas_target}
 
 Use the attached canonical base for identity and the layout guide only for spacing. Same pet in every frame: {pet_notes}. Preserve silhouette, face, palette, material, proportions, markings, and props.
 
@@ -706,15 +810,32 @@ State requirements:
 One centered complete pose per invisible slot. No text, boxes, guide marks, scenery, shadows, glows, motion blur, speed lines, dust, detached effects, stray pixels, or {chroma_key} colors in the pet."""
 
 
+def approval_state(required: bool) -> dict[str, object]:
+    return {
+        "required": required,
+        "status": "not_requested",
+        "approved_at": None,
+        "note": None,
+    }
+
+
+def initialize_jobs(jobs: list[dict[str, object]]) -> list[dict[str, object]]:
+    for job in jobs:
+        required = bool(job.get("approval_required_after", False))
+        job.setdefault("approval", approval_state(required))
+        job.setdefault("selected_source", None)
+        job.setdefault("selected_at", None)
+    return jobs
+
+
 def make_jobs(
     run_dir: Path,
     copied_refs: list[dict[str, object]],
     subjects: list[dict[str, str]] | None = None,
+    animation_mode: str = "generated",
 ) -> list[dict[str, object]]:
-    reference_inputs = [
-        {"path": rel(Path(str(ref["copied_path"])), run_dir), "role": "pet reference"}
-        for ref in copied_refs
-    ]
+    if animation_mode not in ANIMATION_MODES:
+        raise SystemExit(f"unknown animation mode: {animation_mode}")
     if subjects is None:
         subjects = [
             {
@@ -729,24 +850,34 @@ def make_jobs(
             subject["canonical_base_path"] for subject in subjects
         ]
         jobs: list[dict[str, object]] = []
+        previous_base_id = ""
         for subject in subjects:
             subject_id = subject["id"]
+            base_id = f"base-{subject_id}"
+            subject_reference_inputs = reference_inputs_for_subject(
+                run_dir,
+                copied_refs,
+                subject_id,
+            )
             jobs.append(
                 {
-                    "id": f"base-{subject_id}",
+                    "id": base_id,
                     "kind": "base-pet",
                     "subject": subject_id,
                     "status": "pending",
                     "prompt_file": f"prompts/base-{subject_id}.md",
-                    "input_images": reference_inputs,
+                    "input_images": subject_reference_inputs,
                     "output_path": f"decoded/base-{subject_id}.png",
-                    "depends_on": [],
+                    "depends_on": [previous_base_id] if previous_base_id else [],
                     "generation_skill": "$imagegen",
-                    "requires_grounded_generation": bool(reference_inputs),
-                    "allow_prompt_only_generation": not reference_inputs,
+                    "requires_grounded_generation": bool(subject_reference_inputs),
+                    "allow_prompt_only_generation": not subject_reference_inputs,
                     "canonical_base_path": subject["canonical_base_path"],
+                    "approval_required_after": True,
+                    "approval_preview": "show selected base before generating the next visual job",
                 }
             )
+            previous_base_id = base_id
         base_ids = [f"base-{subject['id']}" for subject in subjects]
         jobs.append(
             {
@@ -766,13 +897,23 @@ def make_jobs(
                 "generation_skill": "$imagegen",
                 "requires_grounded_generation": True,
                 "allow_prompt_only_generation": False,
+                "approval_required_after": True,
+                "approval_preview": "show composition guide before generating animation rows",
             }
         )
+        if animation_mode == "micro":
+            return initialize_jobs(jobs)
+        previous_state = ""
         for state, _row, frames, _purpose in ROWS:
+            if animation_mode == "hybrid" and state not in HYBRID_GENERATED_STATES:
+                continue
             depends_on = [*base_ids, "composite-staging"]
+            if previous_state:
+                depends_on.append(previous_state)
             extra_inputs: list[dict[str, str]] = []
             if state == "running-left":
-                depends_on.append("running-right")
+                if "running-right" not in depends_on:
+                    depends_on.append("running-right")
                 extra_inputs.append(
                     {
                         "path": "decoded/running-right.png",
@@ -791,7 +932,6 @@ def make_jobs(
                     "prompt_file": f"prompts/rows/{state}.md",
                     "retry_prompt_file": f"prompts/row-retries/{state}.md",
                     "input_images": [
-                        *reference_inputs,
                         {
                             "path": f"{LAYOUT_GUIDE_DIR}/{state}.png",
                             "role": f"layout guide for {frames} frame slots; use for spacing only, do not copy guide lines",
@@ -815,14 +955,17 @@ def make_jobs(
                     "requires_grounded_generation": True,
                     "allow_prompt_only_generation": False,
                     "identity_reference_paths": identity_reference_paths,
-                    "parallelizable_after": depends_on,
+                    "approval_required_after": True,
+                    "approval_preview": "show row strip before generating the next row",
                     "derivation_policy": derivation_policy,
                     "mirror_policy": {},
                 }
             )
-        return jobs
+            previous_state = state
+        return initialize_jobs(jobs)
 
     identity_reference_paths = [CANONICAL_BASE_PATH]
+    reference_inputs = reference_inputs_for_subject(run_dir, copied_refs, "a")
     jobs: list[dict[str, object]] = [
         {
             "id": "base",
@@ -835,17 +978,28 @@ def make_jobs(
             "generation_skill": "$imagegen",
             "requires_grounded_generation": bool(reference_inputs),
             "allow_prompt_only_generation": not reference_inputs,
+            "canonical_base_path": CANONICAL_BASE_PATH,
+            "approval_required_after": True,
+            "approval_preview": "show selected base before generating animation rows",
         }
     ]
+    if animation_mode == "micro":
+        return initialize_jobs(jobs)
+    previous_state = ""
     for state, _row, frames, _purpose in ROWS:
+        if animation_mode == "hybrid" and state not in HYBRID_GENERATED_STATES:
+            continue
         depends_on = ["base"]
+        if previous_state:
+            depends_on.append(previous_state)
         extra_inputs: list[dict[str, str]] = []
         derivation_policy: dict[str, object] = {
             "may_derive": False,
             "reason": "state requires its own generated animation semantics",
         }
         if state == "running-left":
-            depends_on.append("running-right")
+            if "running-right" not in depends_on:
+                depends_on.append("running-right")
             extra_inputs.append(
                 {
                     "path": "decoded/running-right.png",
@@ -886,12 +1040,14 @@ def make_jobs(
                 "requires_grounded_generation": True,
                 "allow_prompt_only_generation": False,
                 "identity_reference_paths": identity_reference_paths,
-                "parallelizable_after": depends_on,
+                "approval_required_after": True,
+                "approval_preview": "show row strip before generating the next row",
                 "derivation_policy": derivation_policy,
                 "mirror_policy": derivation_policy if state == "running-left" else {},
             }
         )
-    return jobs
+        previous_state = state
+    return initialize_jobs(jobs)
 
 
 def main() -> None:
@@ -912,7 +1068,36 @@ def main() -> None:
         help="Display label. Defaults to the pet name.",
     )
     parser.add_argument("--description", default="")
-    parser.add_argument("--reference", action="append", default=[])
+    parser.add_argument(
+        "--reference",
+        action="append",
+        default=[],
+        help="Legacy shared reference image. May be passed multiple times.",
+    )
+    parser.add_argument(
+        "--shared-reference",
+        action="append",
+        default=[],
+        help="Shared reference image applied to every subject. May be passed multiple times.",
+    )
+    parser.add_argument(
+        "--subject-reference",
+        action="append",
+        default=[],
+        help="Subject-scoped reference image formatted as a:/path or b:/path.",
+    )
+    parser.add_argument(
+        "--subject-a-reference",
+        action="append",
+        default=[],
+        help="Reference image for Subject A only. May be passed multiple times.",
+    )
+    parser.add_argument(
+        "--subject-b-reference",
+        action="append",
+        default=[],
+        help="Reference image for Subject B only; requires --subject-count 2.",
+    )
     parser.add_argument("--output-dir", default="")
     parser.add_argument("--pet-notes", default="")
     parser.add_argument(
@@ -944,6 +1129,12 @@ def main() -> None:
         default="both-act",
         choices=("both-act", "one-acts-other-reacts"),
         help="Duo prompt interaction mode.",
+    )
+    parser.add_argument(
+        "--animation-mode",
+        default="generated",
+        choices=sorted(ANIMATION_MODES),
+        help="generated uses imagegen rows; micro derives all rows; hybrid generates key rows and derives the rest.",
     )
     parser.add_argument(
         "--brand-name",
@@ -981,8 +1172,28 @@ def main() -> None:
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
+    shared_reference_paths = [
+        Path(raw_path).expanduser().resolve()
+        for raw_path in [*args.reference, *args.shared_reference]
+    ]
+    subject_reference_paths: list[tuple[str, Path]] = [
+        parse_subject_reference(raw_value) for raw_value in args.subject_reference
+    ]
+    subject_reference_paths.extend(
+        ("a", Path(raw_path).expanduser().resolve())
+        for raw_path in args.subject_a_reference
+    )
+    subject_reference_paths.extend(
+        ("b", Path(raw_path).expanduser().resolve())
+        for raw_path in args.subject_b_reference
+    )
+    if args.subject_count == 1 and any(
+        subject_id == "b" for subject_id, _source in subject_reference_paths
+    ):
+        raise SystemExit("subject B references require --subject-count 2")
     raw_reference_paths = [
-        Path(raw_path).expanduser().resolve() for raw_path in args.reference
+        *shared_reference_paths,
+        *[source for _subject_id, source in subject_reference_paths],
     ]
     raw_brand_discovery_path = (
         Path(args.brand_discovery_file).expanduser().resolve()
@@ -996,6 +1207,7 @@ def main() -> None:
     args.pet_notes = infer_pet_notes(args, raw_reference_paths)
     args.pet_id = slugify(args.pet_id or args.pet_name or args.display_name)
     args.style_preset = args.style_preset.strip().lower()
+    args.animation_mode = args.animation_mode.strip().lower()
     args.style_contract = resolved_style_contract(args.style_preset, args.style_notes)
     args.brand_name = compact(args.brand_name)
     args.brand_brief = compact(args.brand_brief)
@@ -1033,7 +1245,7 @@ def main() -> None:
 
     copied_refs: list[dict[str, object]] = []
     copied_ref_paths: list[Path] = []
-    for index, source in enumerate(raw_reference_paths, start=1):
+    for index, source in enumerate(shared_reference_paths, start=1):
         if not source.is_file():
             raise SystemExit(f"reference not found: {source}")
         suffix = source.suffix.lower() or ".png"
@@ -1042,6 +1254,27 @@ def main() -> None:
         meta = image_metadata(copied)
         meta["source_path"] = str(source)
         meta["copied_path"] = str(copied)
+        meta["scope"] = "shared"
+        meta["subject"] = ""
+        copied_refs.append(meta)
+        copied_ref_paths.append(copied)
+
+    subject_reference_counts = {subject_id: 0 for subject_id in SUBJECT_IDS}
+    for subject_id, source in subject_reference_paths:
+        if not source.is_file():
+            raise SystemExit(f"subject {subject_id.upper()} reference not found: {source}")
+        subject_reference_counts[subject_id] += 1
+        suffix = source.suffix.lower() or ".png"
+        copied = (
+            ref_dir
+            / f"subject-{subject_id}-reference-{subject_reference_counts[subject_id]:02d}{suffix}"
+        )
+        shutil.copy2(source, copied)
+        meta = image_metadata(copied)
+        meta["source_path"] = str(source)
+        meta["copied_path"] = str(copied)
+        meta["scope"] = "subject"
+        meta["subject"] = subject_id
         copied_refs.append(meta)
         copied_ref_paths.append(copied)
 
@@ -1055,6 +1288,10 @@ def main() -> None:
 
     args.chroma_key = choose_chroma_key(copied_ref_paths, args.chroma_key)
     layout_guides = create_layout_guides(run_dir, args.subject_count)
+    identity_ledger = make_identity_ledger(args)
+    (run_dir / IDENTITY_LEDGER_PATH).write_text(
+        json.dumps(identity_ledger, indent=2) + "\n", encoding="utf-8"
+    )
 
     request = {
         "pet_id": args.pet_id,
@@ -1064,6 +1301,7 @@ def main() -> None:
         "subjects": args.subjects,
         "composition": args.composition if args.subject_count == 2 else "",
         "interaction_mode": args.interaction_mode if args.subject_count == 2 else "",
+        "animation_mode": args.animation_mode,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "atlas": ATLAS,
         "rows": [
@@ -1074,6 +1312,7 @@ def main() -> None:
             {**guide, "path": rel(Path(str(guide["path"])), run_dir)}
             for guide in layout_guides
         ],
+        "identity_ledger_path": IDENTITY_LEDGER_PATH,
         "references": copied_refs,
         "chroma_key": args.chroma_key,
         "pet_notes": args.pet_notes,
@@ -1120,12 +1359,31 @@ Place Subject A on the left and Subject B on the right in one compact 192x208-st
             retry_row_prompt(args, state, row, frames, purpose),
         )
 
+    row_states = [state for state, _row, _frames, _purpose in ROWS]
+    generated_states = (
+        row_states
+        if args.animation_mode == "generated"
+        else [state for state in row_states if state in HYBRID_GENERATED_STATES]
+        if args.animation_mode == "hybrid"
+        else []
+    )
+    derived_states = [state for state in row_states if state not in generated_states]
+    derivation_source = (
+        DUO_COMPOSITION_GUIDE_PATH if args.subject_count == 2 else CANONICAL_BASE_PATH
+    )
     jobs = {
         "schema_version": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "run_dir": str(run_dir),
         "primary_generation_skill": "$imagegen",
-        "jobs": make_jobs(run_dir, copied_refs, args.subjects),
+        "animation_mode": args.animation_mode,
+        "row_derivation": {
+            "status": "not_applicable" if args.animation_mode == "generated" else "pending",
+            "source": derivation_source,
+            "generated_states": generated_states,
+            "derived_states": derived_states,
+        },
+        "jobs": make_jobs(run_dir, copied_refs, args.subjects, args.animation_mode),
     }
     (run_dir / "imagegen-jobs.json").write_text(
         json.dumps(jobs, indent=2) + "\n", encoding="utf-8"
@@ -1138,7 +1396,7 @@ Place Subject A on the left and Subject B on the right in one compact 192x208-st
                 "run_dir": str(run_dir),
                 "request": str(run_dir / "pet_request.json"),
                 "jobs": str(run_dir / "imagegen-jobs.json"),
-                "ready_jobs": ["base"] if args.subject_count == 1 else ["base-a", "base-b"],
+                "ready_jobs": ["base"] if args.subject_count == 1 else ["base-a"],
             },
             indent=2,
         )
