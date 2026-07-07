@@ -41,4 +41,6 @@ For row strips, inspect the raw generated strip before any extraction/downscale 
 
 Treat line-quality/style regression as identity drift. If a row becomes visibly thicker, cruder, blurrier, lower-detail, or less faithful to the canonical base than the approved base image, regenerate the row with stronger grounding rather than accepting it because the pose is recognizable.
 
+Use `compare_identity_drift.py` to diagnose suspected drift before another generation attempt. Its base-vs-frame report is generic: it normalizes the approved canonical base into the pet cell, aligns it to each extracted frame, then reports silhouette overlap, color drift, alpha-area changes, local tile drift, and whole-row center sliding using state-aware motion thresholds. Treat the overlays as QA evidence, not as an automatic replacement for visual review.
+
 Treat chroma-key color inside the sprite as structural failure. A non-flat or slightly varied chroma background can be normalized only when the key color is confined to background/edge cleanup. If cyan/green/magenta key pixels appear inside hands, face, clothing, accessories, or other pet details, reject or regenerate the row instead of relying on extraction cleanup.

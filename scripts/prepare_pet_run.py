@@ -610,11 +610,80 @@ def is_duo(args: argparse.Namespace) -> bool:
     return int(getattr(args, "subject_count", 1)) == 2
 
 
-def subject_identity_lines(subjects: list[dict[str, str]]) -> str:
+def subject_notes(subject: dict[str, object]) -> str:
+    return str(subject.get("identity_notes") or subject.get("notes") or "").strip()
+
+
+def subject_name(subject: dict[str, object]) -> str:
+    return str(subject.get("name") or f"Subject {str(subject.get('id') or '').upper()}").strip()
+
+
+def string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def subject_identity_lines(subjects: list[dict[str, object]]) -> str:
     return "\n".join(
-        f"  - Subject {subject['id'].upper()} ({subject['name']}): {subject['notes']}"
+        f"  - Subject {str(subject['id']).upper()} ({subject_name(subject)}): {subject_notes(subject)}"
         for subject in subjects
     )
+
+
+def subject_lock_block(subject: dict[str, object], *, duo: bool) -> str:
+    label = (
+        f"Subject {str(subject.get('id') or '').upper()} ({subject_name(subject)})"
+        if duo
+        else "Pet"
+    )
+    lines = [f"{label} source-of-truth details:"]
+    notes = subject_notes(subject)
+    if notes:
+        lines.append(f"- Base identity: {notes}")
+    for key, heading in [
+        ("silhouette", "Silhouette"),
+        ("face", "Face"),
+    ]:
+        value = str(subject.get(key) or "").strip()
+        if value:
+            lines.append(f"- {heading}: {value}")
+    critical_details = string_list(subject.get("critical_details"))
+    if critical_details:
+        lines.append("- Critical details that must not drift:")
+        lines.extend(f"  - {detail}" for detail in critical_details)
+    side_details = string_list(subject.get("side_dependent_details"))
+    if side_details:
+        lines.append("- Side-dependent details:")
+        lines.extend(f"  - {detail}" for detail in side_details)
+    simplification_rules = string_list(subject.get("simplification_rules"))
+    if simplification_rules:
+        lines.append("- Pet-scale simplification rules:")
+        lines.extend(f"  - {rule}" for rule in simplification_rules)
+    return "\n".join(lines)
+
+
+def identity_lock_block(
+    subjects: list[dict[str, object]],
+    *,
+    duo: bool,
+    forbidden: list[str] | None = None,
+) -> str:
+    subject_blocks = "\n\n".join(subject_lock_block(subject, duo=duo) for subject in subjects)
+    forbidden_items = [item.strip() for item in (forbidden or []) if item.strip()]
+    forbidden_block = ""
+    if forbidden_items:
+        forbidden_block = "\nHard avoidances from the identity ledger:\n" + "\n".join(
+            f"- {item}" for item in forbidden_items
+        )
+    return f"""Identity lock:
+- Treat the canonical base image(s) as the visual source of truth. Copy permanent design elements from the base; do not redesign, re-symbolize, theme-match, or replace them with generic decoration.
+- Preserve the exact count, side, orientation, relative position, layering, color family, material, and silhouette of permanent elements such as faces, eyes, hair, clothing, markings, props, symbols, emblems, logos, wreaths, flags, ornaments, panels, and attached crowds.
+- Animate only by moving, tilting, bobbing, blinking, or posing the existing pet parts required by the state. Keep permanent symbols and props attached to the same places unless the state explicitly moves that body part.
+- If a tiny detail is too small to render fully at 192x208, simplify it as the same icon, color block, or silhouette in the same place. Do not substitute a thematically similar but different detail.
+- Do not duplicate, merge, smear, crop, swap sides, mirror unexpectedly, recolor, rename, or compress separate base elements into one unclear blob.
+
+{subject_blocks}{forbidden_block}"""
 
 
 def canvas_target_line(frames: int) -> str:
@@ -703,6 +772,11 @@ def row_prompt(
         state_prompt = STATE_PROMPTS[state]
         state_requirements = "\n".join(f"- {line}" for line in STATE_REQUIREMENTS[state])
         identities = subject_identity_lines(subjects)
+        identity_lock = identity_lock_block(
+            subjects,
+            duo=True,
+            forbidden=list(getattr(args, "forbidden", []) or []),
+        )
         interaction = duo_interaction_line(args, state)
         canvas_target = canvas_target_line(frames)
         return f"""Create one horizontal animation strip for Codex pet `{args.pet_id}`, state `{state}`.
@@ -716,6 +790,7 @@ Output exactly {frames} full-body frames in one left-to-right row on flat pure {
 Identity: 2 subjects in EVERY frame, all present, never cropped or omitted. Per-subject identity must match the matching canonical base:
 {identities}
 Preserve each subject's silhouette, face, proportions, markings, palette, material, style, and props independently.
+{identity_lock}
 Staging: left-right composition - Subject A left, Subject B right, fixed positions every frame, stable relative scale and gap. A left, B right. Subjects may touch for an interaction but must not merge into one silhouette.
 Style: {style_contract}
 Animation continuity: keep apparent subject scale and baseline stable within the row unless the state itself intentionally changes vertical position, such as `jumping`.
@@ -728,13 +803,27 @@ State requirements:
 
 Clean extraction: crisp opaque edges, safe padding, no scenery, text, guide marks, checkerboard, shadows, glows, motion blur, speed lines, dust, detached effects, stray pixels, or chroma-key colors inside either subject."""
 
-    pet_notes = args.pet_notes or "the same pet from the approved base reference"
+    subjects = list(getattr(args, "subjects", []) or [])
+    if not subjects:
+        subjects = [
+            {
+                "id": "a",
+                "name": getattr(args, "display_name", "Pet"),
+                "notes": args.pet_notes or "the same pet from the approved base reference",
+            }
+        ]
+    pet_notes = subject_notes(subjects[0]) or args.pet_notes or "the same pet from the approved base reference"
     style_contract = resolved_style_contract(args.style_preset, args.style_notes)
     chroma_key = args.chroma_key["hex"]
     chroma_name = args.chroma_key["name"]
     state_prompt = STATE_PROMPTS[state]
     state_requirements = "\n".join(f"- {line}" for line in STATE_REQUIREMENTS[state])
     canvas_target = canvas_target_line(frames)
+    identity_lock = identity_lock_block(
+        subjects,
+        duo=False,
+        forbidden=list(getattr(args, "forbidden", []) or []),
+    )
     return f"""Create one horizontal animation strip for Codex pet `{args.pet_id}`, state `{state}`.
 
 Use the attached canonical base for identity. Use the attached layout guide only for slot count, spacing, centering, and padding; do not draw the guide.
@@ -744,6 +833,7 @@ Use the attached canonical base for identity. Use the attached layout guide only
 Output exactly {frames} full-body frames in one left-to-right row on flat pure {chroma_name} {chroma_key}. Treat the row as {frames} invisible equal-width slots: one centered complete pose per slot, evenly spaced, with no overlap, clipping, empty slots, labels, or borders.
 
 Identity: same pet in every frame: {pet_notes}. Preserve silhouette, face, proportions, markings, palette, material, style, and props.
+{identity_lock}
 Style: {style_contract}
 Animation continuity: keep apparent pet scale and baseline stable within the row unless the state itself intentionally changes vertical position, such as `jumping`. Move the pose within the slot instead of redrawing the pet larger or smaller frame to frame.
 
@@ -765,6 +855,11 @@ def retry_row_prompt(
         state_prompt = STATE_PROMPTS[state]
         state_requirements = "\n".join(f"- {line}" for line in STATE_REQUIREMENTS[state])
         identities = subject_identity_lines(subjects)
+        identity_lock = identity_lock_block(
+            subjects,
+            duo=True,
+            forbidden=list(getattr(args, "forbidden", []) or []),
+        )
         interaction = duo_interaction_line(args, state)
         canvas_target = canvas_target_line(frames)
         return f"""Create Codex pet duo row `{state}` for `{args.pet_id}`: exactly {frames} full-body frames in one horizontal strip on flat pure {chroma_name} {chroma_key}.
@@ -777,6 +872,7 @@ Identity: 2 subjects in EVERY frame, all present, never cropped or omitted:
 {identities}
 
 Keep Subject A left and Subject B right in every slot. Preserve each subject's silhouette, face, palette, material, proportions, markings, and props. Subjects may touch but must not fuse into one unreadable silhouette.
+{identity_lock}
 
 Keep apparent subject scale and baseline stable within the row unless the state itself intentionally changes vertical position, such as `jumping`.
 
@@ -788,17 +884,32 @@ State requirements:
 
 Both complete subjects inside every invisible slot. No text, boxes, guide marks, scenery, shadows, glows, motion blur, speed lines, dust, detached effects, stray pixels, or {chroma_key} colors in either subject."""
 
-    pet_notes = args.pet_notes or "the canonical base pet"
+    subjects = list(getattr(args, "subjects", []) or [])
+    if not subjects:
+        subjects = [
+            {
+                "id": "a",
+                "name": getattr(args, "display_name", "Pet"),
+                "notes": args.pet_notes or "the canonical base pet",
+            }
+        ]
+    pet_notes = subject_notes(subjects[0]) or args.pet_notes or "the canonical base pet"
     chroma_key = args.chroma_key["hex"]
     chroma_name = args.chroma_key["name"]
     state_prompt = STATE_PROMPTS[state]
     state_requirements = "\n".join(f"- {line}" for line in STATE_REQUIREMENTS[state])
     canvas_target = canvas_target_line(frames)
+    identity_lock = identity_lock_block(
+        subjects,
+        duo=False,
+        forbidden=list(getattr(args, "forbidden", []) or []),
+    )
     return f"""Create Codex pet row `{state}` for `{args.pet_id}`: exactly {frames} full-body frames in one horizontal strip on flat pure {chroma_name} {chroma_key}.
 
 {canvas_target}
 
 Use the attached canonical base for identity and the layout guide only for spacing. Same pet in every frame: {pet_notes}. Preserve silhouette, face, palette, material, proportions, markings, and props.
+{identity_lock}
 
 Keep apparent pet scale and baseline stable within the row unless the state itself intentionally changes vertical position, such as `jumping`.
 

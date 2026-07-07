@@ -135,6 +135,12 @@ python "$SKILL_DIR/scripts/render_animation_previews.py" \
   --frames-root "$RUN_DIR/frames" \
   --output-dir "$RUN_DIR/qa/previews" \
   --states "$JOB_ID"
+
+python "$SKILL_DIR/scripts/compare_identity_drift.py" \
+  --run-dir "$RUN_DIR" \
+  --states "$JOB_ID" \
+  --json-out "$RUN_DIR/qa/identity-drift-$JOB_ID.json" \
+  --overlay-dir "$RUN_DIR/qa/identity-drift-overlays"
 ```
 
 ## Singleton Running-Left Derivation
@@ -195,6 +201,12 @@ python "$SKILL_DIR/scripts/inspect_frames.py" \
   --require-components \
   $STABLE_SLOT_FLAG
 
+python "$SKILL_DIR/scripts/compare_identity_drift.py" \
+  --run-dir "$RUN_DIR" \
+  --states all \
+  --json-out "$RUN_DIR/qa/identity-drift.json" \
+  --overlay-dir "$RUN_DIR/qa/identity-drift-overlays"
+
 python "$SKILL_DIR/scripts/compose_atlas.py" \
   --frames-root "$RUN_DIR/frames" \
   --output "$RUN_DIR/final/spritesheet.png" \
@@ -246,6 +258,8 @@ run/
   qa/contact-sheet.png
   qa/previews/*.gif
   qa/review.json
+  qa/identity-drift.json
+  qa/identity-drift-overlays/
   qa/run-summary.json
 ```
 
@@ -324,9 +338,10 @@ python "$SKILL_DIR/scripts/petgen_identity.py" add-side-detail --run-dir "$RUN_D
 python "$SKILL_DIR/scripts/petgen_identity.py" set-silhouette --run-dir "$RUN_DIR" --subject a --value "<silhouette contract>"
 python "$SKILL_DIR/scripts/petgen_identity.py" set-face --run-dir "$RUN_DIR" --subject a --value "<face contract>"
 python "$SKILL_DIR/scripts/petgen_identity.py" validate --run-dir "$RUN_DIR"
+python "$SKILL_DIR/scripts/refresh_row_prompts.py" --run-dir "$RUN_DIR"
 ```
 
-Solo runs accept `--subject a` or `--subject solo`; duo runs accept `a` and `b`. Unknown ledger fields are preserved.
+Solo runs accept `--subject a` or `--subject solo`; duo runs accept `a` and `b`. Unknown ledger fields are preserved. Run `refresh_row_prompts.py` after base approval and after any identity-ledger change, using `--states idle running-right` when only selected rows need repair. The refreshed prompts stay generic at the skill level: they pull the current pet's approved critical details, side-dependent details, silhouette, face, simplification rules, and avoidances from the run-local ledger.
 
 ## Cleanup
 

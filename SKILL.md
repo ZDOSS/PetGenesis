@@ -180,6 +180,7 @@ Use approval checkpoints by default. The goal is to catch style, identity, and c
 - Generate one visual job at a time unless the user explicitly asks for parallel generation.
 - After a singleton base, show a compact preview and ask for approval before generating rows.
 - After base approval, record a compact identity ledger for every canonical side-dependent or tiny detail: character-relative side, viewer-relative appearance in the approved base, visible side, pet-scale simplification, markings/decorations, and avoidances. Update this ledger whenever the user adds or corrects a canonical feature.
+- After updating the identity ledger, refresh row prompts from the ledger before generating or repairing rows so prompts include the approved base's exact preserved elements instead of relying only on the original concept description.
 - For duo pets, generate and show Subject A base, Subject B base, and the composite staging reference as separate approval checkpoints before generating rows.
 - Generate one animation row at a time. After each row is copied into `decoded/`, create or show a compact row preview/contact sheet and ask for approval before starting the next row.
 - If the user dislikes a base, composite, or row, repair that smallest scope before continuing.
@@ -203,6 +204,14 @@ When the user adds a new canonical detail after rows already exist, stop and dec
 
 For prompts that mention hands, ears, eyes, direction, or accessories, define both character side and viewer side. If a hand or finger matters, prefer visual relationships over labels alone: thumb side, top/bottom visible finger, central long finger, palm side, back-of-hand side, and the exact approved crop. If the detail still cannot read clearly in a `192x208` cell, simplify it intentionally or choose a pose where it is readable.
 
+Before generating rows after base approval, refresh row prompts with the current ledger:
+
+```bash
+python "$SKILL_DIR/scripts/refresh_row_prompts.py" --run-dir "$RUN_DIR"
+```
+
+Use `--states idle running-right` to refresh only selected rows during repair. The refreshed prompts add a ledger-driven identity lock that tells generation to preserve exact base elements such as symbols, props, flags, wreaths, markings, side-specific items, and attached silhouettes, simplifying them in place instead of replacing or merging them.
+
 ## Default Workflow
 
 Read `references/runbook.md` before preparing, resuming, processing, packaging, or cleaning up a real run. The normal order is:
@@ -212,7 +221,7 @@ Read `references/runbook.md` before preparing, resuming, processing, packaging, 
 3. Generate visual jobs approval-gated with `$imagegen`, using every input image listed in `imagegen-jobs.json`.
 4. Record selected outputs with `petgen_jobs.py selected`; approve, reject, or mark repair only after user or visual-QA review.
 5. For singleton runs only, derive `running-left` from approved `running-right` when mirroring is visually safe. Never mirror duo `running-left`. For explicit micro/hybrid runs, use `derive_micro_animation_rows.py` only after required base/composite or key rows are approved.
-6. After every required job is approved or derived, run extraction, inspection, atlas composition, validation, contact-sheet generation, and GIF preview rendering.
+6. After every required job is approved or derived, run extraction, frame inspection, identity-drift comparison against the canonical base, atlas composition, validation, contact-sheet generation, and GIF preview rendering.
 7. Inspect final contact sheet and preview GIFs with the QA rubric and a visual QA worker when worker mode is authorized.
 8. Ask where to save the finished pet, then package with `package_pet.py` to the Codex pet folder, a project folder, or both. Do not bypass package preflight unless the user explicitly accepts an unvalidated package.
 9. Verify packaged output with `verify_pet_package.py` before treating it as install-ready or catalog-ready.
@@ -257,6 +266,7 @@ When frame inspection, final visual QA, or the user rejects a job, read `referen
 - For structural defects, redraw/regenerate the smallest complete structural scope. Do not use paint-over patches to hide anatomy, face, finger, mouth, or prop-continuity errors.
 - After repeated same-class repair failures, stop to diagnose and redesign instead of continuing the same fix pattern.
 - Treat visual identity or style drift as a blocker even when `qa/review.json` and `final/validation.json` have no errors.
+- Treat `compare_identity_drift.py` errors as blockers unless the user explicitly accepts the specific drift after visual review. Use the report and overlays to distinguish allowed state motion from unintended redesign, palette drift, symbol drift, prop drift, or whole-sprite sliding.
 - Treat a contact sheet that shows cropped references, repeated tiles, white cell backgrounds, or non-sprite fragments as failed.
 - Treat preview GIFs that show extraction-induced size popping, reversed directional timing, wrong facing direction, or inert idle loops as failed.
 - Treat row previews that show source-level horizontal sliding in non-directional rows as failed, even if the individual frames look acceptable.
@@ -276,6 +286,7 @@ When frame inspection, final visual QA, or the user rejects a job, read `referen
 - `final/validation.json` has `ok: true`.
 - Row-by-row review confirms the animation cycles are complete enough for the Codex app.
 - Motion previews do not show unintended size popping, reversed directional cadence, or wrong row semantics.
+- Identity-drift comparison has been run against the approved canonical base for generated rows, and `qa/identity-drift.json` has `ok: true` or explicitly documented user-accepted exceptions.
 - Critical side-dependent or tiny identity details have source-scale and pet-scale QA crops when they are visible in the row.
 - No row is approved while unresolved repair notes remain.
 - Non-pixel styles are accepted when readable at pet size and consistent across rows.

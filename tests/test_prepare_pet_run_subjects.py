@@ -288,6 +288,44 @@ def test_row_prompt_includes_exact_canvas_target():
     assert "Canvas target: 1152x208 pixels for 6 frames" in retry_prompt
 
 
+def test_row_prompt_includes_identity_lock_and_critical_details():
+    prepare = load_prepare()
+    request = args(subject_count=1)
+    request.subjects = [
+        {
+            "id": "a",
+            "name": "Detail Keeper",
+            "notes": "ornate pet with fragile markings and props",
+            "canonical_base_path": "references/canonical-base.png",
+            "critical_details": [
+                "left cheek star marking",
+                "separate lower medallion and gold wreath",
+            ],
+            "side_dependent_details": [
+                "viewer-left blue ribbon, viewer-right red charm",
+            ],
+            "simplification_rules": [
+                "simplify tiny markings as the same icon in the same place",
+            ],
+            "silhouette": "round mascot with attached base ornament",
+            "face": "single smiling face with dot eyes",
+        }
+    ]
+    request.forbidden = ["merged charms", "duplicate markings"]
+
+    prompt = prepare.row_prompt(request, "idle", 0, 6, "calm")
+    retry_prompt = prepare.retry_row_prompt(request, "idle", 0, 6, "calm")
+
+    for text in [prompt, retry_prompt]:
+        assert "Identity lock:" in text
+        assert "left cheek star marking" in text
+        assert "separate lower medallion and gold wreath" in text
+        assert "viewer-left blue ribbon, viewer-right red charm" in text
+        assert "merged charms" in text
+        assert "duplicate markings" in text
+        assert "do not redesign, re-symbolize" in text
+
+
 def test_identity_ledger_captures_style_and_subject_contract():
     prepare = load_prepare()
     request = args(
