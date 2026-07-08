@@ -21,6 +21,14 @@ After two failed repairs of the same defect class, stop and diagnose the cause b
 
 Never approve a row or visual job while any manifest note, QA note, or user-visible concern says it still needs repair. If a row is known-bad, set or leave it as `repair_needed` with `petgen_jobs.py repair`, and do not package it.
 
+## Source Hygiene And Candidate Contamination
+
+Rejected candidates are diagnostic evidence only. Do not use a rejected candidate as a visual source, grounding reference, layer source, inpaint source, or "closest good" starting point unless the user explicitly reverses the rejection. Keep rejected artifacts available for comparing what failed, but rebuild from approved sources.
+
+When a repair touches layered or overlapping elements, separate the sprite into clean plates before editing: background/screen/body plate, approved subject details, approved attached effects or silhouettes, and the intended animated change. If a prior failed layer may be baked into the source, remove or rebuild that plate before adding the replacement layer instead of covering the contamination with new pixels.
+
+For partial animation repairs, animate only the approved moving sub-element and preserve the rest from approved sources. If the requested motion is a small variation in a complex attached silhouette, derive the stable silhouette from the canonical base and vary only the allowed subparts, then verify the change does not obscure protected identity details behind it.
+
 ## Identity And Detail Repairs
 
 For identity repairs, use the canonical base image, original references, contact sheet, and exact row failure note as grounding context. Give the row worker the existing row prompt plus a compact repair note from `qa/review.json`; preserve the canonical pet identity and chosen style.

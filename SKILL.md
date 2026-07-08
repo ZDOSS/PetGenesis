@@ -247,6 +247,7 @@ When frame inspection, final visual QA, or the user rejects a job, read `referen
 - For brand/product/company/prospect requests without a concrete avatar description or reference image, run brand discovery before base generation and pass only the compact brief into the run.
 - Use `$imagegen` as the only visual generation layer. Do not invoke image APIs, image CLIs, local raster generators, or one-off generation scripts from this skill.
 - Keep reference images attached/visible for `$imagegen` whenever the chosen path supports references.
+- Treat rejected visual candidates as diagnostic evidence only. Do not use a rejected candidate as a grounding image, paint source, layer source, or "closest good" reference unless the user explicitly reverses the rejection; use the approved canonical base, original references, or a newly rebuilt clean plate instead.
 - For every row-strip generation, verify before generation that the canonical base and layout guide are actually attached or visible to the generation context. Do not generate rows from text-only references to prior conversation images.
 - Attach the row's `references/layout-guides/<state>.png` image to every row-strip job as a layout-only guide, and do not accept outputs that copy guide pixels.
 - Use lightweight visual workers for base generation, row-strip visual generation, and final contact-sheet QA only when the user authorizes worker/subagent mode; the parent owns manifest updates, deterministic image scripts, packaging, and cleanup.
