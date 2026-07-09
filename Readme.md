@@ -1,10 +1,14 @@
 # PetGenesis
 
-PetGenesis creates Codex-compatible animated pets from one subject or a two-subject duo. It keeps the Hatch Pet atlas contract and adds a duo workflow for paired characters.
+PetGenesis creates Codex-compatible animated pets from one subject or a two-subject duo. It is built on the `hatch-pet` Codex skill, preserving its deterministic atlas contract, visual QA, validation, and packaging workflow while adding PetGenesis-specific duo support for paired characters.
 
 Use `--subject-count 1` for a solo pet and `--subject-count 2` for a duo. Counts greater than 2 are rejected because each animation cell is only `192x208`.
 
 For duo pets, PetGenesis generates each subject separately, then creates a composite staging reference before generating animation rows. This improves identity consistency while preserving the normal Codex pet atlas.
+
+## Credits
+
+PetGenesis is based on the `hatch-pet` skill and should credit that foundation wherever it is shared. Hatch Pet provides the core Codex custom-pet pipeline for sprite atlas geometry, row extraction, transparent-background validation, QA previews, and `pet.json` packaging. PetGenesis extends that work with subject-count handling, duo composition, subject-aware row generation, and additional identity checks.
 
 ## Requirements
 

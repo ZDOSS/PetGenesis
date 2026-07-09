@@ -1,13 +1,13 @@
 ---
 name: petgenesis
-description: Create Codex custom pet spritesheets from text, images, brand cues, or one/two character concepts. Use for solo or two-subject duo pet runs that need base art, animation row strips, QA previews, validation, and pet.json packaging. Do not use for general image art, logos, scenes, or pets with more than two subjects.
+description: Create Codex custom pet spritesheets from text, images, brand cues, or one/two character concepts. Built on hatch-pet's deterministic atlas, QA, validation, and packaging workflow; use for solo or two-subject duo pet runs that need base art, animation rows, approval gates, and pet.json packaging. Do not use for general image art, logos, scenes, or pets with more than two subjects.
 ---
 
 # PetGenesis
 
 ## Overview
 
-Create a Codex-compatible animated pet from a concept, brand cue, company/prospect name, one or more reference images, or any combination of those inputs. This workflow keeps the deterministic Hatch Pet pipeline for atlas geometry, validation, visual QA, and packaging, while preserving one-subject pet generation and adding a two-subject duo workflow.
+Create a Codex-compatible animated pet from a concept, brand cue, company/prospect name, one or more reference images, or any combination of those inputs. This workflow is built on the `hatch-pet` skill and keeps its deterministic pipeline for atlas geometry, validation, visual QA, and packaging, while preserving one-subject pet generation and adding a two-subject duo workflow.
 
 User-facing inputs are minimal. If the user omits a pet name, infer one from the concept, brand, company, or reference filenames; if that is not possible, choose a short friendly name. If the user omits a description, infer one from the concept or references. If the user omits reference images, generate the base pet from text first, then use that base as the canonical reference for every animation row.
 
