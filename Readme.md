@@ -1,6 +1,6 @@
 # PetGenesis
 
-PetGenesis creates Codex-compatible animated pets from one subject or a two-subject duo. It is built on the `hatch-pet` Codex skill, preserving its deterministic atlas contract, visual QA, validation, and packaging workflow while adding PetGenesis-specific duo support for paired characters.
+PetGenesis creates Codex- and OpenPets-compatible animated pets from one subject or a two-subject duo. It is built on the `hatch-pet` Codex skill, preserving its deterministic atlas contract, visual QA, validation, and packaging workflow while adding PetGenesis-specific duo support for paired characters.
 
 Use `--subject-count 1` for a solo pet and `--subject-count 2` for a duo. Counts greater than 2 are rejected because each animation cell is only `192x208`.
 
@@ -10,13 +10,27 @@ For duo pets, PetGenesis generates each subject separately, then creates a compo
 
 PetGenesis is based on the `hatch-pet` skill and should credit that foundation wherever it is shared. Hatch Pet provides the core Codex custom-pet pipeline for sprite atlas geometry, row extraction, transparent-background validation, QA previews, and `pet.json` packaging. PetGenesis extends that work with subject-count handling, duo composition, subject-aware row generation, and additional identity checks.
 
+## Hermes and OpenPets
+
+The repository includes a version-controlled Hermes adapter under [`hermes/`](hermes/README.md). It uses Hermes's `image_generate` tool, reuses the same root `scripts/` and `references/`, and installs verified packages through the running OpenPets desktop app. The existing root `SKILL.md` remains the Codex entry point.
+
+Quick setup from PowerShell:
+
+```powershell
+hermes doctor
+python .\hermes\install.py
+hermes skills list --source local
+```
+
+If `hermes doctor` does not report `✓ image_gen`, configure a supported image-generation provider through `hermes tools` or `hermes setup`. Do not add unrecognized `image_gen.provider` or `image_gen.model` keys just because Hermes can save them. Start a fresh session, run `/petgenesis`, and ask for an OpenPets pet. See [`hermes/README.md`](hermes/README.md) for installation, updates, MCP setup, OpenPets CLI commands, and troubleshooting.
+
 ## Requirements
 
 Required for normal runs:
 
 - Python 3.10+.
 - Pillow with WebP support.
-- `$imagegen` access.
+- An image-generation runtime: Codex `$imagegen` for the root skill, or Hermes `image_generate` for the adapter under `hermes/`.
 - Write access to the active project/workspace root.
 
 Required for tests:
@@ -87,7 +101,7 @@ Use `scripts/petgen_identity.py` to manage side-dependent details instead of han
 Before packaging the finished pet, ask where it should be saved:
 
 - Codex custom pet folder: `${CODEX_HOME:-$HOME/.codex}/pets/<pet-id>/`.
-- A user-chosen folder in the current project/workspace.
+- A user-chosen folder in the current project/workspace, including an OpenPets package root.
 - Both.
 
 Use the active workspace, environment variables, or the user's chosen destination. Do not hard-code machine-specific paths.
@@ -98,6 +112,14 @@ Verify finished packages with:
 
 ```bash
 python scripts/verify_pet_package.py /absolute/path/to/package-folder --strict-clean
+```
+
+For OpenPets, install the strictly verified package through the running desktop app:
+
+```bash
+npx -y @open-pets/cli@latest status
+npx -y @open-pets/cli@latest install --from-folder /absolute/path/to/package-folder
+npx -y @open-pets/cli@latest pets
 ```
 
 Export clean catalog submissions with:
@@ -115,24 +137,24 @@ python scripts/export_catalog_submission.py \
 Solo pet:
 
 ```text
-Create a solo Codex pet named <name> from these references.
+Create a solo Codex/OpenPets pet named <name> from these references.
 Style: <pixel/sticker/plush/clay/flat-vector/etc>.
 Must preserve: <list key colors, silhouette, face, outfit, props>.
 Animation personality: <calm, energetic, mischievous, sleepy, focused>.
 Avoid: <text, logos, extra props, scenery, effects, shadows>.
-Final pet should be saved to: <Codex custom pet folder / project folder / both>.
+Final pet should be saved to: <Codex custom pet folder / OpenPets / project folder / both>.
 ```
 
 Duo pet:
 
 ```text
-Create a two-character Codex pet duo named <name>.
+Create a two-character Codex/OpenPets pet duo named <name>.
 Subject A stays on the left: <identity details>.
 Subject B stays on the right: <identity details>.
 Shared style: <style and line/color guidance>.
 Required interaction: <how they should relate in idle or key rows>.
 Avoid: <identity drift, swapped sides, extra symbols, scenery, text>.
-Final pet should be saved to: <Codex custom pet folder / project folder / both>.
+Final pet should be saved to: <Codex custom pet folder / OpenPets / project folder / both>.
 ```
 
 Repair request:

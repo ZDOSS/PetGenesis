@@ -13,7 +13,7 @@ Read this file before using lightweight workers/subagents for PetGenesis image g
 
 ## Activation And Model Choice
 
-Use lightweight subagents for image-heavy work when the user explicitly authorizes worker/subagent mode or the current Codex environment has been configured for this PetGenesis workflow. This bounds each `$imagegen` rollout to one selected image, keeps contact-sheet vision payloads out of the parent thread, and reduces cost while preserving the full 9-state app contract.
+Use lightweight subagents for image-heavy work when the user explicitly authorizes worker/subagent mode or the current runtime has been configured for this PetGenesis workflow. This bounds each image-generation rollout to one selected image, keeps contact-sheet vision payloads out of the parent thread, and reduces cost while preserving the full 9-state app contract. Use `$imagegen` in Codex and `image_generate` in Hermes.
 
 If the user has not allowed subagents, or the intent on subagent use is vague, ask for permission to spawn lightweight visual workers. If the user declines or does not authorize worker mode, run the same sequence in the parent thread and keep outputs concise. This permission is separate from parallelization; still run visual jobs sequentially unless the user explicitly asks for parallel generation.
 
@@ -37,7 +37,7 @@ Base worker:
 
 - handle only the `base` job
 - read `prompts/base-pet.md` and use any listed reference images
-- use `$imagegen` only
+- use only the active runtime's image tool: `$imagegen` in Codex or `image_generate` in Hermes
 - honor any compact brand inspiration line in the prompt as broad visual/personality guidance, without copying logos, readable marks, UI screenshots, slogans, or text
 - return only `selected_source=/absolute/path/to/selected-output.png` and `qa_note=<one sentence>`
 
@@ -45,7 +45,7 @@ Row worker:
 
 - handle exactly one row job
 - read the row prompt and use all listed input images
-- use `$imagegen` only; do not draw, edit, tile, or synthesize sprites locally
+- use only the active runtime's image tool (`$imagegen` in Codex or `image_generate` in Hermes); do not draw, edit, tile, or synthesize sprites locally
 - perform a quick visual sanity check for frame count, identity, chroma background, spacing, clipping, and detached effects
 - enforce the row prompt's transparency and effects rules, including no detached effects, no wave marks for `waving`, no speed lines or dust for directional running rows, no literal foot-running for the non-directional `running` row, and only attached opaque sprite-like tears/smoke/stars when allowed by the state prompt
 - return only `selected_source=/absolute/path/to/selected-output.png` and `qa_note=<one sentence>`
@@ -53,7 +53,7 @@ Row worker:
 Final visual QA worker:
 
 - inspect `qa/contact-sheet.png` plus the row GIFs under `qa/previews/`, with `qa/review.json` and `final/validation.json` as text context when useful
-- verify all 9 rows match the Codex app state contract and the same pet identity
+- verify all 9 rows match the shared Codex/OpenPets app state contract and the same pet identity
 - return a compact result: `visual_qa=pass` or `visual_qa=fail`, plus row-specific repair notes when failing
 - do not edit files, queue repairs, package, or clean up
 
@@ -68,7 +68,7 @@ Prompt file: <absolute base prompt file>
 Input images:
 - <absolute path> - <role>
 
-Use $imagegen only. Read the base prompt and attach every listed input image. If the prompt contains brand inspiration, use it only as broad mascot-safe guidance; do not copy logos, readable marks, UI screenshots, slogans, or text. Before returning, visually check that the result is one centered full-body pet on a flat chroma background, with no text, scenery, shadows, or detached effects.
+Use only the active runtime's image tool: `$imagegen` in Codex or `image_generate` in Hermes. Read the base prompt and attach every listed input image. If the prompt contains brand inspiration, use it only as broad mascot-safe guidance; do not copy logos, readable marks, UI screenshots, slogans, or text. Before returning, visually check that the result is one centered full-body pet on a flat chroma background, with no text, scenery, shadows, or detached effects.
 
 Do not edit manifests, copy into decoded, record selected/approved job state, generate rows, run image-processing scripts, repair, package, or open unrelated files.
 Do not include Markdown image previews, base64, or extra attachments in the final response.
@@ -91,7 +91,7 @@ Input images:
 - <absolute path> - <role>
 - <absolute path> - <role>
 
-Use $imagegen only. Read the row prompt and attach every listed input image. If imagegen returns Bad Request, retry once with the retry prompt and the same input images.
+Use only the active runtime's image tool: `$imagegen` in Codex or `image_generate` in Hermes. Read the row prompt and attach every listed input image. If generation returns Bad Request, retry once with the retry prompt and the same input images.
 
 Before returning, visually check: exact frame count, same pet identity as canonical base, flat chroma background, complete separated unclipped poses, and no detached effects or guide marks. The prompt's transparency and effects rules are mandatory: no detached effects, no wave marks for `waving`, no speed lines or dust for directional running rows, no literal foot-running for the non-directional `running` row, and only attached opaque sprite-like tears/smoke/stars when allowed by the state prompt.
 

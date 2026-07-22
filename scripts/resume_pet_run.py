@@ -75,6 +75,13 @@ def is_visual_job_done(job: dict[str, Any]) -> bool:
     return str(job.get("status")) in APPROVED_STATUSES
 
 
+def job_generation_skill(job: dict[str, Any]) -> str:
+    value = job.get("generation_skill")
+    if isinstance(value, str) and value:
+        return value
+    return "$imagegen"
+
+
 def job_summary(job: dict[str, Any], run_dir: Path) -> dict[str, Any]:
     output_path = job_output_path(run_dir, job)
     return {
@@ -86,6 +93,7 @@ def job_summary(job: dict[str, Any], run_dir: Path) -> dict[str, Any]:
         "retry_prompt_file": job.get("retry_prompt_file"),
         "output_path": as_posix_relative(output_path, run_dir) if output_path else None,
         "input_images": job.get("input_images", []),
+        "generation_skill": job_generation_skill(job),
     }
 
 
@@ -592,9 +600,10 @@ def analyze_run(run_dir: Path) -> dict[str, Any]:
     if ready:
         job = ready[0]
         job_id = str(job.get("id"))
+        generation_skill = job_generation_skill(job)
         base_result["next_action"] = action(
             "generate_job",
-            f"Generate `{job_id}` with $imagegen using the listed prompt and input images.",
+            f"Generate `{job_id}` with {generation_skill} using the listed prompt and input images.",
             job=job_summary(job, run_dir),
             commands=[
                 petgen_command(

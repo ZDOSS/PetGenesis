@@ -41,7 +41,7 @@ python "$SKILL_DIR/scripts/prepare_pet_run.py" \
   --force
 ```
 
-All arguments above are optional except any flags needed to express user constraints. Use `--subject-count 1` for solo pets and `--subject-count 2` for duo pets. For text-only requests, pass the concept through `--pet-notes` and omit `--reference`; `prepare_pet_run.py` will infer a name, description, chroma key, and a dedicated output directory under `<current workspace>/petgenesis-pets/` as needed.
+All arguments above are optional except any flags needed to express user constraints. In Hermes, append `--generation-skill image_generate` so run and job manifests name the active tool; omit it in Codex to retain the `$imagegen` default. Use `--subject-count 1` for solo pets and `--subject-count 2` for duo pets. For text-only requests, pass the concept through `--pet-notes` and omit `--reference`; `prepare_pet_run.py` will infer a name, description, chroma key, and a dedicated output directory under `<current workspace>/petgenesis-pets/` as needed.
 
 Use `--reference` or `--shared-reference` for images that apply to the whole pet concept. For duo pets, prefer subject-scoped references when the inputs depict different characters: pass `--subject-reference a:/absolute/path.png`, `--subject-reference b:/absolute/path.png`, or the convenience aliases `--subject-a-reference` and `--subject-b-reference`. Subject-scoped references are attached to the matching base job first; shared references are attached after them.
 
@@ -77,7 +77,7 @@ Follow `next_action.kind`: `generate_job`, `await_approval`, `repair_job`, `deri
 
 ## Job Controller
 
-Ask for the next ready `$imagegen` jobs:
+Ask for the next ready image-generation jobs:
 
 ```bash
 python "$SKILL_DIR/scripts/petgen_jobs.py" next \
@@ -154,7 +154,7 @@ python "$SKILL_DIR/scripts/derive_running_left_from_running_right.py" \
   --decision-note "<why mirroring preserves this pet's identity>"
 ```
 
-That script mirrors each generated frame slot in place so the leftward row preserves the rightward row's temporal order. For duo runs, skip this step and generate `running-left` as a normal `$imagegen` row so Subject A stays left and Subject B stays right.
+That script mirrors each generated frame slot in place so the leftward row preserves the rightward row's temporal order. For duo runs, skip this step and generate `running-left` with the active runtime's image tool (`$imagegen` in Codex or `image_generate` in Hermes) so Subject A stays left and Subject B stays right.
 
 ## Micro And Hybrid Row Derivation
 
@@ -265,7 +265,7 @@ run/
 
 ## Packaging
 
-Before packaging, ask the user where the finished pet should be saved. The Codex custom-pet location is `${CODEX_HOME:-$HOME/.codex}/pets/<pet-name>/`; the user may also request a copy in a project folder or another destination.
+Before packaging, ask the user where the finished pet should be saved. The Codex custom-pet location is `${CODEX_HOME:-$HOME/.codex}/pets/<pet-name>/`; an OpenPets run should package to a project folder before installation through the OpenPets CLI. The user may also request another destination.
 
 Package to the Codex custom-pet location:
 
@@ -286,6 +286,20 @@ python "$SKILL_DIR/scripts/package_pet.py" \
 ```
 
 Package to both destinations with `--destination both --project-dir /absolute/path/to/package-root`. `package_pet.py` writes `pet.json`, copies `spritesheet.webp`, and updates `qa/run-summary.json`.
+
+For OpenPets, strictly verify the resulting `<package-root>/<pet-id>` folder, confirm the desktop app is running, and then install it:
+
+```bash
+python "$SKILL_DIR/scripts/verify_pet_package.py" \
+  /absolute/path/to/package-root/<pet-id> \
+  --strict-clean
+
+openpets status
+openpets install --from-folder /absolute/path/to/package-root/<pet-id>
+openpets pets
+```
+
+If `openpets` is not installed globally, replace it with `npx -y @open-pets/cli@latest` after the user permits npm to fetch/cache the CLI. Require `ok: true` and `appRunning: true` from `status`, and require the expected pet ID in `pets` before reporting installation success.
 
 Packaging now runs a trust-boundary preflight. By default it requires `pet_request.json`, `final/spritesheet.webp`, `final/validation.json` with `ok: true`, `qa/review.json` with `ok: true`, `qa/contact-sheet.png`, every expected preview GIF, and an `imagegen-jobs.json` manifest whose jobs are all `approved` or `derived`. If intermediate manifests were intentionally cleaned after QA, pass `--allow-cleaned-run` and keep the remaining QA artifacts. Use `--allow-unvalidated` only when the user explicitly accepts an unvalidated package; the package summary will record warnings and `ok: false`.
 

@@ -1,4 +1,4 @@
-# Codex Pet Contract
+# Codex and OpenPets Pet Contract
 
 ## Sprite Atlas
 
@@ -40,4 +40,20 @@ Manifest shape:
 }
 ```
 
-The app loads custom pets from the folder name under `${CODEX_HOME:-$HOME/.codex}/pets/`.
+Codex loads custom pets from the folder name under `${CODEX_HOME:-$HOME/.codex}/pets/`.
+
+## OpenPets Compatibility
+
+OpenPets accepts the same two-file package and atlas geometry. Package to a normal project folder, verify it, then install the exact pet folder through the running OpenPets desktop app:
+
+```bash
+python "$SKILL_DIR/scripts/verify_pet_package.py" \
+  /absolute/path/to/packages/<pet-id> \
+  --strict-clean
+
+openpets status
+openpets install --from-folder /absolute/path/to/packages/<pet-id>
+openpets pets
+```
+
+When no global `openpets` executable is available, use `npx -y @open-pets/cli@latest` in its place after the user permits npm to fetch/cache it. OpenPets registers the package by the `id` in `pet.json`; keep the folder name aligned with that ID for predictable local development and sharing.

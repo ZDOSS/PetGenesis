@@ -128,6 +128,24 @@ def test_resume_reports_ready_job(tmp_path):
     assert result["next_action"]["kind"] == "generate_job"
     assert result["next_action"]["job"]["id"] == "base"
     assert result["ready_jobs"][0]["id"] == "base"
+    assert "$imagegen" in result["next_action"]["message"]
+
+
+def test_resume_reports_hermes_generation_tool(tmp_path):
+    resume = load_resume()
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    write_request(run_dir)
+    hermes_base = base_job()
+    hermes_base["generation_skill"] = "image_generate"
+    write_manifest(run_dir, [hermes_base, idle_job()])
+
+    result = resume.analyze_run(run_dir)
+
+    assert result["next_action"]["kind"] == "generate_job"
+    assert result["next_action"]["job"]["generation_skill"] == "image_generate"
+    assert "image_generate" in result["next_action"]["message"]
+    assert "$imagegen" not in result["next_action"]["message"]
 
 
 def test_resume_reports_selected_job_waiting_for_approval(tmp_path):

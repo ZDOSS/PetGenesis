@@ -944,6 +944,7 @@ def make_jobs(
     copied_refs: list[dict[str, object]],
     subjects: list[dict[str, str]] | None = None,
     animation_mode: str = "generated",
+    generation_skill: str = "$imagegen",
 ) -> list[dict[str, object]]:
     if animation_mode not in ANIMATION_MODES:
         raise SystemExit(f"unknown animation mode: {animation_mode}")
@@ -980,7 +981,7 @@ def make_jobs(
                     "input_images": subject_reference_inputs,
                     "output_path": f"decoded/base-{subject_id}.png",
                     "depends_on": [previous_base_id] if previous_base_id else [],
-                    "generation_skill": "$imagegen",
+                    "generation_skill": generation_skill,
                     "requires_grounded_generation": bool(subject_reference_inputs),
                     "allow_prompt_only_generation": not subject_reference_inputs,
                     "canonical_base_path": subject["canonical_base_path"],
@@ -1005,7 +1006,7 @@ def make_jobs(
                 ],
                 "output_path": DUO_COMPOSITION_GUIDE_PATH,
                 "depends_on": base_ids,
-                "generation_skill": "$imagegen",
+                "generation_skill": generation_skill,
                 "requires_grounded_generation": True,
                 "allow_prompt_only_generation": False,
                 "approval_required_after": True,
@@ -1062,7 +1063,7 @@ def make_jobs(
                     ],
                     "output_path": f"decoded/{state}.png",
                     "depends_on": depends_on,
-                    "generation_skill": "$imagegen",
+                    "generation_skill": generation_skill,
                     "requires_grounded_generation": True,
                     "allow_prompt_only_generation": False,
                     "identity_reference_paths": identity_reference_paths,
@@ -1086,7 +1087,7 @@ def make_jobs(
             "input_images": reference_inputs,
             "output_path": "decoded/base.png",
             "depends_on": [],
-            "generation_skill": "$imagegen",
+            "generation_skill": generation_skill,
             "requires_grounded_generation": bool(reference_inputs),
             "allow_prompt_only_generation": not reference_inputs,
             "canonical_base_path": CANONICAL_BASE_PATH,
@@ -1122,7 +1123,7 @@ def make_jobs(
                 "may_derive_from": "running-right",
                 "derivation": "framewise-horizontal-mirror-preserving-order",
                 "requires_explicit_approval": True,
-                "fallback_generation_skill": "$imagegen",
+                "fallback_generation_skill": generation_skill,
             }
         elif state not in NON_DERIVABLE_STATES:
             derivation_policy["reason"] = "no deterministic derivation is configured for this state"
@@ -1147,7 +1148,7 @@ def make_jobs(
                 ],
                 "output_path": f"decoded/{state}.png",
                 "depends_on": depends_on,
-                "generation_skill": "$imagegen",
+                "generation_skill": generation_skill,
                 "requires_grounded_generation": True,
                 "allow_prompt_only_generation": False,
                 "identity_reference_paths": identity_reference_paths,
@@ -1245,7 +1246,13 @@ def main() -> None:
         "--animation-mode",
         default="generated",
         choices=sorted(ANIMATION_MODES),
-        help="generated uses imagegen rows; micro derives all rows; hybrid generates key rows and derives the rest.",
+        help="generated creates runtime image-tool rows; micro derives all rows; hybrid generates key rows and derives the rest.",
+    )
+    parser.add_argument(
+        "--generation-skill",
+        default="$imagegen",
+        choices=("$imagegen", "image_generate"),
+        help="Image-generation tool recorded in run manifests and visual jobs.",
     )
     parser.add_argument(
         "--brand-name",
@@ -1434,7 +1441,7 @@ def main() -> None:
         "brand_brief": args.brand_brief,
         "brand_sources": args.brand_source,
         "pet_safe_style": PET_SAFE_STYLE,
-        "primary_generation_skill": "$imagegen",
+        "primary_generation_skill": args.generation_skill,
     }
     if brand_discovery_path:
         request["brand_discovery_path"] = brand_discovery_path
@@ -1486,7 +1493,7 @@ Place Subject A on the left and Subject B on the right in one compact 192x208-st
         "schema_version": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "run_dir": str(run_dir),
-        "primary_generation_skill": "$imagegen",
+        "primary_generation_skill": args.generation_skill,
         "animation_mode": args.animation_mode,
         "row_derivation": {
             "status": "not_applicable" if args.animation_mode == "generated" else "pending",
@@ -1494,7 +1501,13 @@ Place Subject A on the left and Subject B on the right in one compact 192x208-st
             "generated_states": generated_states,
             "derived_states": derived_states,
         },
-        "jobs": make_jobs(run_dir, copied_refs, args.subjects, args.animation_mode),
+        "jobs": make_jobs(
+            run_dir,
+            copied_refs,
+            args.subjects,
+            args.animation_mode,
+            args.generation_skill,
+        ),
     }
     (run_dir / "imagegen-jobs.json").write_text(
         json.dumps(jobs, indent=2) + "\n", encoding="utf-8"

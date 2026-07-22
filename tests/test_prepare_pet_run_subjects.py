@@ -1,5 +1,8 @@
 import argparse
 import importlib.util
+import json
+import subprocess
+import sys
 from pathlib import Path
 
 
@@ -128,8 +131,60 @@ def test_singleton_jobs_preserve_base_job_shape(tmp_path):
     assert running_left["depends_on"] == ["base", "running-right"]
     assert waving["depends_on"] == ["base", "running-left"]
     assert running_left["derivation_policy"]["may_derive"] is True
+    assert {job["generation_skill"] for job in jobs} == {"$imagegen"}
+    assert running_left["derivation_policy"]["fallback_generation_skill"] == (
+        "$imagegen"
+    )
     assert running_left["approval_required_after"] is True
     assert "parallelizable_after" not in running_left
+
+
+def test_jobs_use_the_requested_generation_tool(tmp_path):
+    prepare = load_prepare()
+    subjects = prepare.normalize_subjects(args(subject_count=1))
+
+    jobs = prepare.make_jobs(
+        tmp_path,
+        [],
+        subjects,
+        generation_skill="image_generate",
+    )
+
+    assert {job["generation_skill"] for job in jobs} == {"image_generate"}
+    running_left = next(job for job in jobs if job["id"] == "running-left")
+    assert running_left["derivation_policy"]["fallback_generation_skill"] == (
+        "image_generate"
+    )
+
+
+def test_cli_records_hermes_generation_tool_in_run_manifests(tmp_path):
+    run_dir = tmp_path / "hermes-run"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(MODULE_PATH),
+            "--pet-name",
+            "Hermes Helper",
+            "--output-dir",
+            str(run_dir),
+            "--generation-skill",
+            "image_generate",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    request = json.loads((run_dir / "pet_request.json").read_text(encoding="utf-8"))
+    job_manifest = json.loads(
+        (run_dir / "imagegen-jobs.json").read_text(encoding="utf-8")
+    )
+    assert request["primary_generation_skill"] == "image_generate"
+    assert job_manifest["primary_generation_skill"] == "image_generate"
+    assert {job["generation_skill"] for job in job_manifest["jobs"]} == {
+        "image_generate"
+    }
 
 
 def test_micro_animation_mode_creates_only_singleton_base_job(tmp_path):
